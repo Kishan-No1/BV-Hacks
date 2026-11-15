@@ -6,8 +6,10 @@ import NodCore
 /// Whole-second timestamps one minute apart, so ISO 8601 round trips are exact.
 private func at(_ n: Int) -> Date { Date(timeIntervalSince1970: 1_700_000_000 + Double(n) * 60) }
 
-private func outcome(_ n: Int, polished: String?, final: String, raw: String = "rough") -> StyleOutcome {
-    StyleOutcome(raw: raw, polished: polished, final: final, at: at(n))
+/// `raw` defaults to the final text: what a prompt sent as written looks like, and a different rough
+/// prompt for every different final.
+private func outcome(_ n: Int, polished: String?, final: String, raw: String? = nil) -> StyleOutcome {
+    StyleOutcome(raw: raw ?? final, polished: polished, final: final, at: at(n))
 }
 
 /// Applies the outcomes in order from `start`; returns the last profile and the changes of every step.
@@ -457,6 +459,30 @@ private func kept(_ n: Int, _ lead: String) -> StyleOutcome {
         let more = run([outcome(3, polished: nil, final: "Bump the version. run tests after edits")], from: r.profile)
         #expect(reinforcedKeys(more.steps[0]) == [addKey])
         #expect(note(more.profile, addKey)?.count == 2)
+    }
+
+    @Test func theSameTaskSentAgainWithOneMoreLineTeachesNoStandingLines() {
+        // Seen live: the same rough prompt polished twice, the second time with a line added by hand.
+        let rough = "reply with the single word ok"
+        let r = run([
+            outcome(1, polished: "Reply with the single word: ok. Report what you changed.",
+                    final: "Reply with the single word: ok. Report what you changed.", raw: rough),
+            outcome(2, polished: "Reply with the single word: ok. Report what you changed.",
+                    final: "Reply with the single word: ok. Report what you changed.\nThen reply done on a new line", raw: rough),
+        ])
+        // Only the line the user typed is learned; the task's own sentences are not "always add this".
+        #expect(learnedKeys(r.steps[1]) == ["add:then reply done on a new line"])
+        #expect(r.profile.notes.map(\.key) == ["add:then reply done on a new line"])
+    }
+
+    @Test func aLineKeptUnderTwoDifferentTasksIsAStandingLine() {
+        let r = run([
+            outcome(1, polished: "Fix the login bug. Keep the diff small.", final: "Fix the login bug. Keep the diff small.",
+                    raw: "fix login bug"),
+            outcome(2, polished: "Update the README. Keep the diff small.", final: "Update the README. Keep the diff small.",
+                    raw: "readme is out of date"),
+        ])
+        #expect(learnedKeys(r.steps[1]) == ["add:keep the diff small"])
     }
 
     @Test func emptyStringsDoNotCrash() {

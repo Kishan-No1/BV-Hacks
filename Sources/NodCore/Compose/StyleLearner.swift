@@ -196,7 +196,7 @@ public enum StyleLearner {
         }
         // A line the user sends again is no longer "a line they keep removing".
         for f in final where (state.profile.removedCounts[f.norm] ?? 0) > 0 { state.profile.removedCounts[f.norm] = 0 }
-        learnRecurringLines(&state, final: final, finalTokens: finalTokens)
+        learnRecurringLines(&state, outcome: outcome, final: final, finalTokens: finalTokens)
         learnVerbs(&state, final: final)
 
         state.profile.outcomes.append(outcome)
@@ -288,17 +288,32 @@ public enum StyleLearner {
         }
     }
 
-    /// Rule 6. A standing line: one the user sent before, inside a different prompt.
-    private static func learnRecurringLines(_ state: inout State, final: [Segment], finalTokens: [String]) {
-        // A one-line prompt sent twice is the same task again, not a standing instruction.
+    /// Rule 6. A standing line: one the user sent before, as part of a different task.
+    ///
+    /// "Different task" is judged on the rough prompts with the line itself taken out. Sending the same
+    /// prompt again with one more sentence repeats every line of it, and none of those is a standing
+    /// instruction; "run tests after edits" under two unrelated requests is.
+    private static func learnRecurringLines(_ state: inout State, outcome: StyleOutcome, final: [Segment], finalTokens: [String]) {
+        // A one-line prompt sent twice is the same task again.
         guard final.count >= 2 else { return }
-        var earlier = Set<String>()
-        for old in state.profile.outcomes where jaccard(tokens(old.final), finalTokens) < noteMatchThreshold {
-            for s in parse(old.final) { earlier.insert(s.norm) }
+        let earlier = state.profile.outcomes
+            .filter { jaccard(tokens($0.final), finalTokens) < noteMatchThreshold }
+            .map { (segments: Set(parse($0.final).map(\.norm)), task: parse(taskText($0))) }
+        guard !earlier.isEmpty else { return }
+        let task = parse(taskText(outcome))
+        for f in final where addableWords.contains(f.tokens.count) {
+            let rest = task.filter { $0.norm != f.norm }.flatMap(\.tokens)
+            let recurs = earlier.contains { old in
+                old.segments.contains(f.norm)
+                    && jaccard(old.task.filter { $0.norm != f.norm }.flatMap(\.tokens), rest) < alignThreshold
+            }
+            if recurs { state.bumpAdd(for: f) }
         }
-        for f in final where addableWords.contains(f.tokens.count) && earlier.contains(f.norm) {
-            state.bumpAdd(for: f)
-        }
+    }
+
+    /// What the user asked for in their own words: the rough prompt (the final text when there is none).
+    private static func taskText(_ outcome: StyleOutcome) -> String {
+        outcome.raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? outcome.final : outcome.raw
     }
 
     /// Rule 7. Which verbs open the user's sent lines.

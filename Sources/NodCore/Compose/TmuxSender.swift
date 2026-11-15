@@ -119,7 +119,7 @@ public enum TmuxCommands {
         [tmux, "-S", socket, "display-message", "-p", "-t", pane, identifyFormat]
     }
 
-    /// `capture-pane -p -t <pane> -S -30`
+    /// `capture-pane -p -t <pane> -S -30`: the visible pane plus 30 lines of history.
     public static func capture(tmux: String, socket: String, pane: String) -> [String] {
         [tmux, "-S", socket, "capture-pane", "-p", "-t", pane, "-S", "-\(captureHistoryLines)"]
     }
@@ -197,12 +197,22 @@ public enum TmuxText {
 
 // MARK: - Prompt detection
 
-/// Decides from a `capture-pane` whether the pane is showing Claude Code's input prompt. The patterns are
-/// calibrated against real captures; change them here.
+/// Decides from a `capture-pane` whether the pane is showing Claude Code's input prompt. The patterns were
+/// calibrated against a real capture of Claude Code 2.1.322 in tmux 3.8; change them here.
+///
+/// The input is a "❯" line directly under a horizontal rule, with another rule below it:
+///
+///     ────────────────────────────────
+///     ❯ Try "how do I log an error?"
+///     ────────────────────────────────
+///       ⏵⏵ auto mode on (shift+tab to cycle)
+///
+/// The rules matter. Claude Code's menus also mark the selected row with "❯" (the folder-trust dialog shows
+/// "❯ No, exit"), and text typed there would pick an answer. A "❯" row that is not framed by rules is a menu.
 public enum PanePromptDetector {
     /// Only the last lines of the capture count (blank lines at the bottom of the pane are dropped first:
     /// capture-pane prints the whole pane height).
-    public static let lookbackLines = 30
+    public static let lookbackLines = 40
 
     /// A line of a numbered choice dialog: " ❯ 1. Yes", "   2. Yes, and don't ask again", "│ 3) No".
     public static let numberedOptionPattern = #"^[\s│]*[❯>]?\s*\d+[.)]\s+\S"#
@@ -211,20 +221,30 @@ public enum PanePromptDetector {
     public static let dialogOptionCount = 2
 
     /// The input line: ">" or "❯" first (after indentation and the box's "│"), then a space or the end of
-    /// the line. `\s` also matches the no-break space.
+    /// the line. `\s` also matches the no-break space Claude Code prints after "❯".
     public static let promptLinePattern = #"^[\s│]*[❯>](\s|$)"#
 
-    /// true when the captured pane shows Claude Code's input prompt and no numbered choice dialog.
+    /// The rule above and below the input: a run of "─", or the top / bottom edge of the older input box.
+    public static let ruleLinePattern = #"^\s*[╭╰]?[─━]{8,}[╮╯]?\s*$"#
+
+    /// A draft can span several lines; the closing rule must come within this many lines of the "❯".
+    public static let maxInputLines = 12
+
+    /// true when the captured pane shows Claude Code's input prompt and no choice dialog.
     public static func isAtPrompt(_ capture: String) -> Bool {
         var lines = capture.split(omittingEmptySubsequences: false) { $0.isNewline }.map(String.init)
         while let last = lines.last, last.allSatisfy(\.isWhitespace) {
             lines.removeLast()
         }
-        let tail = lines.suffix(lookbackLines)
+        let tail = Array(lines.suffix(lookbackLines))
         guard !tail.isEmpty else { return false }
         let options = tail.filter { matches(numberedOptionPattern, $0) }.count
         if options >= dialogOptionCount { return false }
-        return tail.contains { matches(promptLinePattern, $0) }
+        for i in tail.indices where i > 0 && matches(promptLinePattern, tail[i]) && matches(ruleLinePattern, tail[i - 1]) {
+            let below = tail[(i + 1)...].prefix(maxInputLines)
+            if below.contains(where: { matches(ruleLinePattern, $0) }) { return true }
+        }
+        return false
     }
 
     private static func matches(_ pattern: String, _ line: String) -> Bool {

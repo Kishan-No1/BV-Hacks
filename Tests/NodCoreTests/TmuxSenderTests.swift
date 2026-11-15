@@ -289,6 +289,56 @@ private struct Rig {
         #expect(PanePromptDetector.isAtPrompt(promptBox + String(repeating: "\n", count: 40)))
     }
 
+    /// Captured from Claude Code 2.1.322 in tmux 3.8 (idle, placeholder text; "❯" is followed by a no-break space).
+    private static let realIdle = """
+     ▐▛███▛█   Claude Code v2.1.322
+    ▝▜██████▀  Fable 5.2 with high effort · Claude Pro
+     ▝▝   ▝▝   /…/scratchpad/real/proj
+
+                                                                  ● high · /effort
+    ────────────────────────────────────────────────────────────────────────────────
+    ❯\u{A0}Try "how do I log an error?"
+    ────────────────────────────────────────────────────────────────────────────────
+      ⏵⏵ auto mode on (shift+tab to cycle) · ← 3 agents
+    """
+
+    /// Captured from the same version: the folder-trust dialog. Its selected row starts with "❯" too.
+    private static let realTrustDialog = """
+    ────────────────────────────────────────────────────────────────────────────────
+     Accessing workspace:
+
+     /private/tmp/scratchpad/real/proj
+
+     Quick safety check: Is this a project you created or one you trust? (Like your
+     own code, a well-known open source project, or work from your team). If not,
+     take a moment to review what's in this folder first.
+
+     Claude Code'll be able to read, edit, and execute files here.
+
+     Security guide
+
+     ❯ No, exit
+       Yes, I trust this folder
+
+     Enter to confirm · Esc to cancel
+    """
+
+    @Test func theRealIdlePromptIsAPromptAndTheRealTrustDialogIsNot() {
+        #expect(PanePromptDetector.isAtPrompt(Self.realIdle))
+        #expect(!PanePromptDetector.isAtPrompt(Self.realTrustDialog))
+        // A draft of several lines still ends in the closing rule.
+        let draft = Self.realIdle.replacingOccurrences(of: "❯\u{A0}Try \"how do I log an error?\"", with: "❯\u{A0}first line\n  second line\n  third line")
+        #expect(PanePromptDetector.isAtPrompt(draft))
+    }
+
+    @Test func aMenuRowWithoutRulesAroundItIsNotAPrompt() {
+        #expect(!PanePromptDetector.isAtPrompt("Pick one\n❯ Yes\n  No\n"))
+        // A rule above a menu, none below it.
+        #expect(!PanePromptDetector.isAtPrompt("────────────────\n❯ Yes\n  No\n Enter to confirm"))
+        // "❯" under a rule, but the line right above it is text.
+        #expect(!PanePromptDetector.isAtPrompt("────────────────\n Choose:\n❯ Yes\n────────────────"))
+    }
+
     @Test func aDialogAShellOrNothingIsNotAPrompt() {
         #expect(!PanePromptDetector.isAtPrompt(dialog))
         // A dialog drawn above an old prompt box still wins.
@@ -296,6 +346,7 @@ private struct Rig {
         #expect(!PanePromptDetector.isAtPrompt(dialog + "\n" + promptBox))
         #expect(!PanePromptDetector.isAtPrompt("user@mac repo % "))
         #expect(!PanePromptDetector.isAtPrompt("$ "))
+        #expect(!PanePromptDetector.isAtPrompt("❯ "))
         #expect(!PanePromptDetector.isAtPrompt(""))
         #expect(!PanePromptDetector.isAtPrompt("\n\n\n"))
     }
