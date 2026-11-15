@@ -222,6 +222,10 @@ private func kept(_ n: Int, _ lead: String) -> StyleOutcome {
         r = run(removes)
         #expect(note(r.profile, "omit:let me know if you have questions")?.active == true)
         #expect(note(r.profile, "length.shorter")?.active != true)
+        // Once the polish writes the learned line itself and the user keeps it, the lengths still match.
+        let kept = (4...6).map { outcome($0, polished: "Fix the area\($0) bug in the auth module now. Run tests after edits.",
+                                         final: "Fix the area\($0) bug in the auth module now. Run tests after edits.\nrun tests after edits") }
+        #expect(!run(adds + kept).profile.notes.contains { $0.key.hasPrefix("length.") })
         // And the standing line is not the user's preferred verb.
         #expect(run(adds).profile.verbCounts == ["fix": 3])
     }

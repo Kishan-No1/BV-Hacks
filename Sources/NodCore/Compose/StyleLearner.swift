@@ -187,9 +187,10 @@ public enum StyleLearner {
             judgeExistingNotes(&state, polished: polished, final: final, finalTokens: finalTokens)
             // Length is judged on what is left once the standing lines are set aside: a line the user always
             // adds or always removes has its own note and says nothing about how long they like a prompt.
-            learnLength(&state,
-                        polishedWords: polished.filter { !state.matchesNote("omit:", $0) }.reduce(0) { $0 + $1.tokens.count },
-                        finalWords: final.filter { !state.matchesNote("add:", $0) }.reduce(0) { $0 + $1.tokens.count })
+            let words: ([Segment]) -> Int = { segments in
+                segments.filter { !state.matchesNote("add:", $0) && !state.matchesNote("omit:", $0) }.reduce(0) { $0 + $1.tokens.count }
+            }
+            learnLength(&state, polishedWords: words(polished), finalWords: words(final))
         } else {
             judgeExistingNotes(&state, polished: nil, final: final, finalTokens: finalTokens)
         }
