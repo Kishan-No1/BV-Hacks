@@ -62,6 +62,15 @@ import NodCore
 }
 
 @Suite struct HookOutputContractTests {
+    @Test func permissionRequestBytesMatchTheContractDocument() {
+        #expect(String(decoding: HookOutput.permissionRequest(.allow), as: UTF8.self)
+            == #"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}"#)
+        #expect(String(decoding: HookOutput.permissionRequest(.deny(message: nil)), as: UTF8.self)
+            == #"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Denied from Nod."}}}"#)
+        #expect(String(decoding: HookOutput.permissionRequest(.deny(message: "no \"rm\"\nin /tmp")), as: UTF8.self)
+            == #"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"no \"rm\"\nin /tmp"}}}"#)
+    }
+
     @Test func allowOutputMatchesTheDocs() throws {
         let json = try JSONValue.parse(HookOutput.permissionRequest(.allow))
         let expected: JSONValue = ["hookSpecificOutput": ["hookEventName": "PermissionRequest", "decision": ["behavior": "allow"]]]

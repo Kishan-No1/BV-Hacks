@@ -171,8 +171,10 @@ public final class SessionStore {
         pending.append(request)
         sessions[i].status = .needsYou
 
+        // NaN, negative or absurd timeouts would trap in the UInt64 conversion.
+        let seconds = timeout.isFinite ? min(max(0, timeout), 86_400) : Self.defaultPermissionTimeout
         let timeoutTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             guard !Task.isCancelled else { return }
             self?.finish(id, decision: nil, statusAfter: .needsYou)
         }
@@ -203,6 +205,13 @@ public final class SessionStore {
         }
         toast = Toast(kind: decision == .allow ? .allowed : .denied, sessionID: request.sessionID, at: now())
         finish(id, decision: decision, statusAfter: .working)
+        // A denied call never runs, so no PostToolUse(Failure) follows (seen live with Claude Code 2.1.325):
+        // drop the tool card that its PreToolUse put up.
+        if decision != .allow, let i = sessions.firstIndex(where: { $0.id == request.sessionID }),
+           sessions[i].currentTool?.toolName == request.toolName {
+            sessions[i].currentTool = nil
+            sessions[i].currentStep = nil
+        }
     }
 
     /// Drops a pending request without a decision (Claude Code then shows its own prompt).

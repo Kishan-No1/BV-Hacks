@@ -153,16 +153,20 @@ public enum HookOutput {
     /// or `{"...":{"decision":{"behavior":"deny","message":"..."}}}`. Never sets `interrupt`,
     /// `updatedInput` or `updatedPermissions`.
     public static func permissionRequest(_ decision: Decision) -> Data {
-        var d: [String: JSONValue] = [:]
+        // Built by hand so the bytes match hook-contract.md section 3 exactly (key order included).
+        let d: String
         switch decision {
         case .allow:
-            d["behavior"] = "allow"
+            d = #"{"behavior":"allow"}"#
         case .deny(let message):
-            d["behavior"] = "deny"
-            d["message"] = .string(message ?? defaultDenyMessage)
+            d = #"{"behavior":"deny","message":"# + jsonString(message ?? defaultDenyMessage) + "}"
         }
-        let out: JSONValue = ["hookSpecificOutput": ["hookEventName": "PermissionRequest", "decision": .object(d)]]
-        return encode(out)
+        return Data((#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":"# + d + "}}").utf8)
+    }
+
+    /// `s` as a JSON string literal, quotes included.
+    private static func jsonString(_ s: String) -> String {
+        String(decoding: encode(.string(s)), as: UTF8.self)
     }
 
     /// Fallback shape for a PreToolUse hook (not installed by default; kept for reference/tests):

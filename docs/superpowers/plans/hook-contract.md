@@ -155,8 +155,10 @@ Rules that follow for the hook script:
 - Never set `onFailure: "block"`.
 - The user may answer in the terminal while Nod holds the request. Claude Code then ends the hook process, curl
   drops the connection, and the server cancels the held request. `PostToolUse` for the same call also clears it.
-  (Not stated in the docs: whether the terminal prompt is visible while a `PermissionRequest` hook is still running.
-  Workstream B checks this in the live smoke test. Either way the two paths above keep Nod consistent.)
+  Checked live with Claude Code 2.1.325: the terminal prompt IS visible while Nod holds the request, and a
+  `permission_prompt` notification fires about 6 s later. A terminal No/Esc ends the hook (Nod dropped the request
+  about 40 ms later); a terminal Yes is cleared by the matching `PostToolUse`. The first answer wins.
+- After a deny, Claude Code sends no `PostToolUse` or `PostToolUseFailure`; the store clears the tool card itself.
 
 ## 5. Settings shape
 
