@@ -1,0 +1,26 @@
+{
+  "session_id": "7f3c2a10-5b1e-4c7a-9d54-0e2b6a1f9c33",
+  "prompt_id": "550e8400-e29b-41d4-a716-446655440000",
+  "transcript_path": "/Users/dev/.claude/projects/-Users-dev-code-acme-web/7f3c2a10-5b1e-4c7a-9d54-0e2b6a1f9c33.jsonl",
+  "cwd": "/Users/dev/code/acme-web",
+  "permission_mode": "default",
+  "hook_event_name": "PermissionRequest",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+    "questions": [
+      {
+        "question": "Which retry policy?",
+        "header": "Retry",
+        "options": [
+          {
+            "label": "Once"
+          },
+          {
+            "label": "Exponential"
+          }
+        ],
+        "multiSelect": false
+      }
+    ]
+  }
+}

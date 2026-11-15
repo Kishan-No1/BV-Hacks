@@ -4,3 +4,5 @@ build/
 DerivedData/
 *.xcuserstate
 node_modules/
+.build/
+*.png.tmp

@@ -1,0 +1,8 @@
+{
+  "session_id": "7f3c2a10-5b1e-4c7a-9d54-0e2b6a1f9c33",
+  "transcript_path": "/Users/dev/.claude/projects/-Users-dev-code-acme-web/7f3c2a10-5b1e-4c7a-9d54-0e2b6a1f9c33.jsonl",
+  "cwd": "/Users/dev/code/acme-web",
+  "hook_event_name": "Notification",
+  "message": "Claude is waiting for your input",
+  "notification_type": "idle_prompt"
+}

@@ -1,0 +1,19 @@
+{
+  "session_id": "7f3c2a10-5b1e-4c7a-9d54-0e2b6a1f9c33",
+  "prompt_id": "550e8400-e29b-41d4-a716-446655440000",
+  "transcript_path": "/Users/dev/.claude/projects/-Users-dev-code-acme-web/7f3c2a10-5b1e-4c7a-9d54-0e2b6a1f9c33.jsonl",
+  "cwd": "/Users/dev/code/acme-web",
+  "permission_mode": "default",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Grep",
+  "tool_input": {
+    "pattern": "SessionError",
+    "output_mode": "files_with_matches"
+  },
+  "tool_response": {
+    "mode": "files_with_matches",
+    "numFiles": 6
+  },
+  "tool_use_id": "toolu_01Dk2VpKe8QgYr4zMsT1XuBh",
+  "duration_ms": 31
+}
