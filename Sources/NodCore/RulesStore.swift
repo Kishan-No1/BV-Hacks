@@ -7,7 +7,12 @@ import Foundation
 /// Matching is deliberately conservative. On top of the rule itself it refuses:
 /// - Bash commands with shell operators (`;`, `&`, `|`, backtick, `$`, `<`, `>`, newline) for prefix rules,
 /// - calls the RiskEngine rates high,
-/// - calls that touch a path outside the session cwd or a secrets file.
+/// - calls that touch a path outside the session cwd, a secrets file, or a file that runs code later
+///   (`.git/`, `.claude/`, `.mcp.json`),
+/// - for prefix rules, a command the RiskEngine rates higher than the bare prefix (a `sort` rule never
+///   allows `sort -o file`), any argument containing `=`, any option that is not a plain `-abc` /
+///   `--long-name` word, and, when the prefix itself is review level, any option outside a short
+///   per-command allowlist.
 public final class RulesStore: @unchecked Sendable {
     /// `~/Library/Application Support/Nod/rules.json`
     public static var defaultFileURL: URL {
@@ -64,7 +69,14 @@ public final class RulesStore: @unchecked Sendable {
             guard let command, !command.isEmpty, !Self.hasShellOperators(command) else { return false }
             let p = Self.normalizedCommand(prefix)
             guard !p.isEmpty else { return false }
-            return command == p || command.hasPrefix(p + " ")
+            guard command == p || command.hasPrefix(p + " ") else { return false }
+            // A stored prefix that would no longer be offered (sed, awk, rg, ...) no longer matches.
+            guard Self.bashPrefix(p) == p else { return false }
+            // The rule covers the prefix at its own risk level, not riskier variants of it.
+            let prefixLevel = engine.assess(toolName: toolName, toolInput: ["command": .string(p)], cwd: cwd).level
+            guard analysis.assessment.level <= prefixLevel else { return false }
+            let rest = command.dropFirst(p.count).split(separator: " ").map(String.init)
+            return Self.argumentsAreSafe(rest, prefix: p, strict: prefixLevel != .low)
         }
     }
 
@@ -168,8 +180,44 @@ public final class RulesStore: @unchecked Sendable {
     /// Tools with command groups (`docker compose up`, `gh pr view`): the prefix needs three words.
     private static let groupedTools: Set<String> = ["docker", "gh", "aws", "gcloud", "az", "kubectl"]
 
-    /// Never offered as a prefix: interpreters, privilege, deletion, network fetches.
+    /// Options a review-level prefix rule still auto-allows. Every other option falls back to asking.
+    private static let reviewOptionAllowlist: [String: Set<String>] = [
+        "git commit": ["-m", "-a", "-am", "--all", "--message", "-q", "--quiet"],
+        "git add": ["-A", "--all", "-u", "--update", "-v"],
+        "mkdir": ["-p", "-v"],
+        "cp": ["-r", "-R", "-a", "-p", "-v", "-n"],
+        "mv": ["-v", "-n"],
+        "ln": ["-s"],
+    ]
+
+    /// The words after a rule's prefix. Refuses anything containing `=` (`--output=FILE`, `SHELL=./x`,
+    /// `--script-shell=./x`) and any option that is not a plain `-abc` or `--long-name` word
+    /// (`-O'rm -rf ~'`). `strict` (the prefix itself is review level) allows only the options in
+    /// `reviewOptionAllowlist`; a lone `--` is always fine.
+    static func argumentsAreSafe(_ rest: [String], prefix: String, strict: Bool) -> Bool {
+        let allowed = reviewOptionAllowlist[prefix] ?? []
+        for word in rest {
+            if word == "--" { continue }
+            if word.contains("=") { return false }
+            let bare = word.drop { $0 == "\"" || $0 == "'" || $0 == "\\" }
+            guard bare.hasPrefix("-") else { continue }
+            if strict {
+                guard allowed.contains(word) else { return false }
+            } else {
+                let body = word.drop { $0 == "-" }
+                let dashes = word.count - body.count
+                guard dashes <= 2, !body.isEmpty,
+                      body.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || (dashes == 2 && $0 == "-")) })
+                else { return false }
+            }
+        }
+        return true
+    }
+
+    /// Never offered as a prefix: interpreters, privilege, deletion, network fetches, and tools whose
+    /// arguments are programs of their own (sed, awk) or can name a program to run (rg --pre).
     private static let blockedFirstWords: Set<String> = [
+        "sed", "gsed", "awk", "gawk", "mawk", "nawk", "rg",
         "rm", "sudo", "doas", "su", "curl", "wget", "sh", "bash", "zsh", "dash", "ksh", "fish", "python", "python2",
         "python3", "node", "ruby", "perl", "php", "osascript", "eval", "exec", "source", ".", "env", "xargs", "nohup",
         "time", "command", "builtin", "dd", "mkfs", "chmod", "chown", "chgrp", "ssh", "scp", "nc", "find", "deno",

@@ -122,7 +122,7 @@ private func assess(_ event: String) throws -> Assessment {
         "npm test", "npm run test", "npm run lint", "npm run build", "npm run typecheck",
         "pnpm test", "yarn test", "pytest -x tests", "swift build", "swift test --filter Foo",
         "cargo build", "cargo test", "cargo check", "go build ./...", "go test ./...", "go vet ./...",
-        "make", "make test", "make build", "git -C . status", "python3 -m pytest",
+        "make test", "make build", "git -C . status", "python3 -m pytest",
     ])
     func lowCommands(command: String) {
         let a = bash(command)
@@ -388,5 +388,111 @@ private func assess(_ event: String) throws -> Assessment {
         let a = engine.assess(toolName: "Frobnicate", toolInput: .null, cwd: repo)
         #expect(a.level == .review)
         #expect(a.title == "Use Frobnicate")
+    }
+}
+
+// MARK: - Review findings: commands that run code or write files must never read "Low risk"
+
+@Suite struct RiskHardeningTests {
+    /// Each of these was rated LOW ("Read-only") before the hardening pass.
+    @Test(arguments: [
+        "env -S 'echo hi'", "env -S'./evil.sh' x", "env --split-string='./evil.sh'",
+        "git -c core.fsmonitor='./evil.sh' status", "git -c user.name=x log", "git --config-env=core.pager=EVIL log",
+        "GIT_EXTERNAL_DIFF=./evil.sh git diff", "PATH=./evil:$PATH ls", "DYLD_INSERT_LIBRARIES=./x.dylib ls",
+        "LD_PRELOAD=./x.so ls", "BASH_ENV=./x ls", "env PATH=./evil ls", "env -P ./evil ls", "PATH=./evil; ls",
+        "NODE_OPTIONS='--require ./evil.js' npm test", "npm_config_script_shell=./evil.sh npm test",
+        "git diff --output=out.patch", "git log --output out.txt", "git diff --ext-diff", "git show --ext-diff HEAD",
+        "git grep -O'./evil.sh' foo", "git grep --open-files-in-pager=./evil.sh foo", "git grep -Oless foo",
+        "gsed '1e ./evil.sh' README.md", "sed -n 'w out.txt' README.md", "sed 's/a/b/w out.txt' README.md",
+        "sed 's/a/b/e' README.md", "sed -e 'r other.txt' README.md", "sed -f script.sed README.md",
+        "sed -n '/a/{p;q}' README.md",
+        "rg --pre=./evil.sh foo .", "rg --pre ./evil.sh foo", "rg --hostname-bin ./evil.sh foo", "ack --pager=./evil.sh foo",
+        "make", "make -j4", "make test SHELL=./evil.sh", "make --eval='x:;./evil.sh' test",
+        "sort -o src/main.swift /dev/null", "sort --output=src/main.swift x", "sort -osrc/main.swift x",
+        "sort --compress-program=./evil.sh big.txt", "uniq in.txt out.txt", "tree -o listing.txt",
+        "xxd -r dump.hex out.bin", "fd -x ./evil.sh", "fd . --exec-batch ./evil.sh", "bat --pager=./evil.sh README.md",
+        "npm test --script-shell=./evil.sh", "npm run lint --script-shell=./evil.sh", "npm --prefix ../other test",
+        "pnpm test --shell-emulator=x", "go test -exec ./evil.sh ./...", "go vet -vettool=./evil ./...",
+        "cargo build --config build.rustc-wrapper='./evil.sh'",
+    ])
+    func isNeverLow(command: String) {
+        let a = bash(command, description: "List files")
+        #expect(a.level >= .review, "\(command)")
+        #expect(a.title != "List files", "\(command)")
+        #expect(!a.reasons.contains("Read-only"), "\(command)")
+    }
+
+    /// Where the option's value is itself a command, that command is what gets rated.
+    @Test(arguments: [
+        "env -S 'rm -rf ~'", "env -S'rm -rf ~'", "git -c core.fsmonitor='rm -rf ~' status",
+        "git -c core.pager='rm -rf ~' log", "git -c alias.x='!rm -rf ~' x", "rg --pre 'rm -rf ~' foo",
+        "git grep -O'rm -rf ~' foo", "git diff --output=/Users/dev/.zshrc", "git log --output=/Users/dev/.ssh/config",
+        "git fetch --upload-pack='rm -rf ~' origin", "fd -x rm -rf ~",
+        "sed -n 'w /Users/dev/.ssh/authorized_keys' README.md",
+    ])
+    func nestedDangerIsHigh(command: String) {
+        // The sed case writes through the script, which is not parsed: it stays review.
+        let floor: RiskLevel = command.hasPrefix("sed") ? .review : .high
+        #expect(bash(command, description: "List files").level >= floor, "\(command)")
+    }
+
+    /// The hardening must not make everyday commands noisy.
+    @Test(arguments: [
+        "sed -n '10,20p' src/a.ts", "sed 's/foo/bar/g' src/a.ts", "sed -e 's/a/b/' -e 's|c|d|' x.txt", "sed -n '$p' x",
+        "sed -ne '/start/,/end/p' x.txt", "sed '1d;$d' x.txt", "NODE_ENV=test npm test", "CI=1 npm test",
+        "FORCE_COLOR=0 npm run lint", "env NODE_ENV=test npm test", "env", "npm test -- src/auth", "npm test --silent",
+        "sort names.txt", "sort -u -k2 names.txt", "uniq -c names.txt", "uniq -f 1 names.txt", "tree -L 2",
+        "xxd -l 16 a.bin", "git diff --stat HEAD~1", "git log -5 --format=%s", "git grep -n TODO", "rg -n TODO src",
+        "fd -e swift", "x=1", "count=3; echo done", "git grep -i foo",
+    ])
+    func everydayCommandsStayLow(command: String) {
+        #expect(bash(command).level == .low, "\(command)")
+    }
+
+    @Test func aLongLowCommandIsTitledByTheCommandNotTheDescription() {
+        let long = "ls -la src/components/buttons src/components/forms src/components/layout src/components/nav"
+        #expect(bash(long, description: "List files").title != "List files")
+        #expect(bash(long, description: "List files").title.hasPrefix("Run `ls"))
+        #expect(bash("ls\nls -la", description: "List files").title != "List files")
+        #expect(bash("ls -la", description: "List files").title == "List files")
+    }
+
+    @Test func plainSedScripts() {
+        for ok in ["p", "10,20p", "$d", "/a/d", "s/a/b/", "s/a/b/g", "s|a|b|2", "1d;$d", "/a/,/b/p", "y/abc/xyz/", "10q", "$!d", ""] {
+            #expect(bash("sed -e '\(ok)' x.txt").level == .low, "\(ok)")
+        }
+        for bad in ["w out", "1e ls", "r x", "s/a/b/w out", "s/a/b/e", "/a/{p}", "a\\ text", "i hello", ":a", "b a", "s/a/b", "W x", "R x"] {
+            #expect(bash("sed -e '\(bad)' x.txt").level == .review, "\(bad)")
+        }
+    }
+}
+
+// MARK: - Review findings: credential stores and files that run code
+
+@Suite struct RiskSensitivePathTests {
+    @Test(arguments: [
+        "cat ~/.aws/credentials", "cat ~/.netrc", "cat ~/.npmrc", "cat ~/.pypirc", "cat ~/.docker/config.json",
+        "cat ~/.config/gh/hosts.yml", "cat ~/.zsh_history", "tail ~/.bash_history", "cat ~/.git-credentials",
+    ])
+    func credentialStoresAreSecrets(command: String) {
+        let a = bash(command)
+        #expect(a.level == .high, "\(command)")  // outside the project AND a secrets file
+        #expect(a.reasons.contains("Secrets file"), "\(command)")
+    }
+
+    @Test(arguments: [".git/hooks/pre-commit", ".git/config", ".mcp.json", ".claude/hooks/x.sh", ".claude/commands/go.md"])
+    func writingAFileThatRunsCodeIsHigh(path: String) {
+        let w = engine.assess(toolName: "Write", toolInput: ["file_path": .string("\(repo)/\(path)"), "content": "x"], cwd: repo)
+        #expect(w.level == .high, "\(path)")
+        #expect(w.reasons.contains("Can run code later"), "\(path)")
+        #expect(bash("cp evil \(path)").level == .high, "\(path)")
+        #expect(bash("echo x > \(path)").level == .high, "\(path)")
+    }
+
+    @Test func ordinaryFilesAreUnaffected() {
+        let w = engine.assess(toolName: "Write", toolInput: ["file_path": .string("\(repo)/src/git.ts"), "content": "x"], cwd: repo)
+        #expect(w.level == .review)
+        #expect(bash("cp a.txt .github/workflows.txt").level == .review)
+        #expect(bash("cat .gitignore").level == .low)
     }
 }

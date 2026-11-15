@@ -7,9 +7,11 @@ import Foundation
 /// - Read-only tools are low; a read outside `cwd` is review.
 /// - Bash is split on `&&`, `||`, `;`, `|`, `&` and newlines outside quotes; every segment (and every `$(...)`)
 ///   is classified and the highest level wins. Paths outside `cwd` raise a segment one step.
-/// - Edit tools are review inside `cwd`, high outside it or on a secrets file.
+/// - Edit tools are review inside `cwd`, high outside it, on a secrets file, or on a file that runs code
+///   later (`.git/`, `.claude/`, `.mcp.json`).
 /// - WebFetch, MCP and unknown tools are review.
-/// - Low Bash titles may use Claude's own `description`; review and high titles always come from templates.
+/// - Low Bash titles may use Claude's own `description`, but only for a short command that the card shows
+///   in full next to it; review and high titles always come from templates.
 public struct RiskEngine: Sendable {
     /// Used to expand `~` and `$HOME`.
     let home: String
@@ -74,8 +76,9 @@ public struct RiskEngine: Sendable {
         let v = BashClassifier(root: root, home: home).classify(command)
         let generic = "Run \(TextKit.code(TextKit.shortCommand(command)))"
         let title: String
-        if v.level == .low {
-            // Claude's own summary is only trusted when the command is low risk anyway.
+        if v.level == .low, Self.showsInFull(command) {
+            // Claude's own summary is only used when the command is low risk anyway AND short enough that
+            // the `$ command` card under the title shows all of it; otherwise the title is the command.
             let description = TextKit.sentence(input.string("description") ?? "", limit: 60)
             title = description.isEmpty ? generic : description
         } else {
@@ -83,6 +86,14 @@ public struct RiskEngine: Sendable {
         }
         return Analysis(assessment: Assessment(level: v.level, title: title, reasons: v.reasons, command: command),
                         touchesOutside: v.outside, touchesSensitive: v.sensitive)
+    }
+
+    /// The request card shows one line of the command; longer or multi-line commands get cut off.
+    static let fullCommandLimit = 64
+
+    static func showsInFull(_ command: String) -> Bool {
+        let c = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        return c.count <= fullCommandLimit && !c.contains(where: \.isNewline)
     }
 
     // MARK: - Edit tools
@@ -97,6 +108,7 @@ public struct RiskEngine: Sendable {
         let path = LexicalPath.resolve(raw, base: root, home: home)
         let outside = !root.isEmpty && path.hasPrefix("/") && !LexicalPath.isInside(path, root: root)
         let sensitive = LexicalPath.isSensitive(path)
+        let codeConfig = LexicalPath.isCodeConfig(path)
 
         let diff: DiffPreview
         switch tool {
@@ -123,10 +135,11 @@ public struct RiskEngine: Sendable {
         var reasons: [String] = []
         if outside { level = .high; reasons.append(Reason.outside) }
         if sensitive { level = .high; reasons.append(Reason.secrets) }
-        if !outside, !sensitive, !root.isEmpty { reasons.append(Reason.inside) }
+        if codeConfig, !sensitive { level = .high; reasons.append(Reason.runsCodeLater) }
+        if !outside, !sensitive, !codeConfig, !root.isEmpty { reasons.append(Reason.inside) }
         return Analysis(assessment: Assessment(level: level, title: "\(verb) \(LexicalPath.lastComponent(path))",
                                                reasons: reasons, diff: diff),
-                        touchesOutside: outside, touchesSensitive: sensitive)
+                        touchesOutside: outside, touchesSensitive: sensitive || codeConfig)
     }
 
     // MARK: - Read-only tools

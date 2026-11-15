@@ -18,6 +18,10 @@ enum Reason {
     static let runsScript = "Runs a script"
     static let dependencies = "Changes dependencies"
     static let writesFile = "Writes a file"
+    static let runsProgram = "Runs a program"
+    static let environment = "Changes the environment"
+    static let customOptions = "Custom options"
+    static let runsCodeLater = "Can run code later"
 }
 
 /// The verdict for one simple command, or several merged.
@@ -102,14 +106,22 @@ struct BashClassifier {
             var subCtx = ctx
             out.append(analyze(sub, &subCtx))
         }
-        let (words, sudo) = Self.unwrap(Self.stripKeywords(seg.words))
+        let stripped = Self.stripKeywords(seg.words)
+        let (words, sudo, env) = Self.unwrap(stripped)
         var result: CommandResult
         if !words.isEmpty {
             result = command(words, &ctx)
+            if env, result.verdict.level == .low {
+                // PATH=…, GIT_EXTERNAL_DIFF=…, DYLD_…: the variable can change which program really runs.
+                result.verdict = review(reasons: [Reason.environment])
+            }
         } else if sudo {
             result = CommandResult(verdict: BashVerdict(level: .high))
         } else if seg.redirects.contains(where: \.opensFile) {
             result = CommandResult(verdict: low())
+        } else if stripped.contains(where: { Self.isAssignment($0) && Self.isRiskyShellVariable($0) }) {
+            // `PATH=./evil:$PATH` on its own changes what the next commands run.
+            result = CommandResult(verdict: review(reasons: [Reason.environment]))
         } else {
             return out  // assignment-only, keyword-only or empty
         }
@@ -142,6 +154,13 @@ struct BashClassifier {
             v.level = .high
             v.reasons.removeAll { $0 == Reason.readOnly }
             v.reasons.insert(Reason.secrets, at: 0)
+        } else if let config = writes.first(where: LexicalPath.isCodeConfig) {
+            // .git/hooks, .git/config, .mcp.json, .claude/: files that make later commands run code.
+            v.sensitive = true
+            if v.level < .high || v.title == nil { v.title = "Write \(LexicalPath.lastComponent(config))" }
+            v.level = .high
+            v.reasons.removeAll { $0 == Reason.readOnly }
+            v.reasons.insert(Reason.runsCodeLater, at: 0)
         } else if let first = writes.first, v.level == .low {
             v.level = .review
             v.title = writes.count == 1 ? "Write \(LexicalPath.lastComponent(first))" : "Write files"
@@ -177,19 +196,66 @@ struct BashClassifier {
             return CommandResult(verdict: low())
         case "echo", "printf":
             return CommandResult(verdict: low())
+        case "sort":
+            // `-o FILE` overwrites FILE; `--compress-program` runs a program.
+            var written: [String] = []
+            var runs = false
+            for (i, a) in args.enumerated() {
+                if a == "-o" || a == "--output" { if i + 1 < args.count { written.append(args[i + 1]) } }
+                else if a.hasPrefix("--output=") { written.append(String(a.dropFirst("--output=".count))) }
+                else if a.hasPrefix("-o"), a.count > 2 { written.append(String(a.dropFirst(2))) }
+                else if a.hasPrefix("--compress-program") { runs = true }
+            }
+            if runs { return CommandResult(verdict: review(reasons: [Reason.runsProgram]), paths: paths, written: written) }
+            return CommandResult(verdict: low(), paths: paths, written: written)
+        case "uniq":
+            // `uniq IN OUT` overwrites OUT.
+            let operands = Self.operands(args, valueFlags: ["-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars"])
+            return CommandResult(verdict: low(), paths: Array(operands.prefix(1)), written: Array(operands.dropFirst()))
+        case "tree":
+            var written: [String] = []
+            for (i, a) in args.enumerated() where a == "-o" || a == "--output" {
+                if i + 1 < args.count { written.append(args[i + 1]) }
+            }
+            return CommandResult(verdict: low(), paths: paths, written: written)
+        case "xxd":
+            // `xxd IN OUT` and `xxd -r IN OUT` write OUT.
+            let operands = Self.operands(args, valueFlags: ["-l", "-len", "-s", "-seek", "-c", "-cols", "-g", "-o", "-n", "-name"])
+            return CommandResult(verdict: low(), paths: Array(operands.prefix(1)), written: Array(operands.dropFirst()))
+        case "fd":
+            if let x = args.firstIndex(where: { ["-x", "-X", "--exec", "--exec-batch"].contains($0) }) {
+                var v = review(reasons: ["Runs a command on each file"])
+                let inner = nested(args[(x + 1)...].joined(separator: " "), ctx)
+                if inner.level > v.level { v = inner }
+                return CommandResult(verdict: v)
+            }
+            return CommandResult(verdict: low(), paths: paths)
         case _ where Self.readOnlyCommands.contains(name):
+            // `bat --pager=CMD`, `less`-style pagers given by flag run a program.
+            if args.contains(where: { $0.hasPrefix("--pager") }) {
+                return CommandResult(verdict: review(reasons: [Reason.runsProgram]), paths: paths)
+            }
             return CommandResult(verdict: low(), paths: paths)
         case "grep", "egrep", "fgrep", "rg", "ag", "ack", "jq":
-            return CommandResult(verdict: low(), paths: Self.dropPattern(args, patternFlags: ["-e", "--regexp", "-f", "--file"]))
-        case "sed", "gsed":
-            let inPlace = args.contains { $0.hasPrefix("--in-place") || ($0.hasPrefix("-") && !$0.hasPrefix("--") && $0.dropFirst().contains("i")) }
-            let files = Self.dropPattern(args, patternFlags: ["-e", "--expression", "-f", "--file"])
-            if inPlace { return CommandResult(verdict: review(reasons: [Reason.changesFiles]), written: files) }
+            let files = Self.dropPattern(args, patternFlags: ["-e", "--regexp", "-f", "--file"])
+            // `rg --pre CMD`, `rg --hostname-bin CMD`, `ack --pager=CMD` run CMD.
+            for (i, a) in args.enumerated() {
+                for flag in ["--pre", "--hostname-bin", "--pager"] {
+                    if a == flag {
+                        return CommandResult(verdict: runsProgram(i + 1 < args.count ? args[i + 1] : nil, ctx), paths: files)
+                    }
+                    if a.hasPrefix(flag + "=") {
+                        return CommandResult(verdict: runsProgram(String(a.dropFirst(flag.count + 1)), ctx), paths: files)
+                    }
+                }
+            }
             return CommandResult(verdict: low(), paths: files)
+        case "sed", "gsed":
+            return sed(args)
         case "find":
             return find(args, ctx)
         case "git":
-            return git(args)
+            return git(args, ctx)
         case "npm", "pnpm", "yarn", "bun":
             return nodePackageManager(name, args, paths: paths)
         case "npx", "bunx", "pnpx":
@@ -226,6 +292,10 @@ struct BashClassifier {
         case "cargo":
             let sub = Self.firstNonFlag(args) ?? ""
             if ["build", "b", "test", "t", "check", "c", "clippy", "doc", "bench", "tree", "metadata"].contains(sub) {
+                // `--config KEY=VALUE` can swap the compiler, linker or test runner.
+                if args.contains(where: { $0.hasPrefix("--config") }) {
+                    return CommandResult(verdict: review(reasons: [Reason.customOptions]), paths: paths)
+                }
                 return CommandResult(verdict: low(), paths: paths)
             }
             if ["install", "add", "update", "fetch", "remove", "uninstall"].contains(sub) {
@@ -234,7 +304,14 @@ struct BashClassifier {
             return CommandResult(verdict: review(reasons: [Reason.unfamiliar]), paths: paths)
         case "go":
             let sub = Self.firstNonFlag(args) ?? ""
-            if ["build", "test", "vet", "list", "version", "env", "doc"].contains(sub) { return CommandResult(verdict: low(), paths: paths) }
+            if ["build", "test", "vet", "list", "version", "env", "doc"].contains(sub) {
+                // `-exec PROG`, `-toolexec PROG`, `-vettool PROG` run PROG; `go env -w` writes the go config.
+                let runs = args.contains { a in
+                    ["-exec", "--exec", "-toolexec", "--toolexec", "-vettool", "--vettool", "-w"].contains { a == $0 || a.hasPrefix($0 + "=") }
+                }
+                if runs { return CommandResult(verdict: review(reasons: [Reason.customOptions]), paths: paths) }
+                return CommandResult(verdict: low(), paths: paths)
+            }
             if ["get", "install"].contains(sub) || (sub == "mod" && args.contains { ["download", "tidy"].contains($0) }) {
                 return CommandResult(verdict: installVerdict("install"), paths: paths)
             }
@@ -300,6 +377,133 @@ struct BashClassifier {
         return v
     }
 
+    /// An option whose value is a program to run (`rg --pre CMD`, `git -c core.pager=CMD`): the value is
+    /// classified as a command of its own and is at least review.
+    private func runsProgram(_ value: String?, _ ctx: Context) -> BashVerdict {
+        guard let value, !value.trimmingCharacters(in: .whitespaces).isEmpty else {
+            return review(reasons: [Reason.runsProgram])
+        }
+        var v = nested(value, ctx)
+        if v.level == .review, v.title == nil { v.reasons = Self.dedupe([Reason.runsProgram] + v.reasons) }
+        return v
+    }
+
+    /// `sed`: in-place edits change files; a script with `w FILE`, `r FILE` or GNU `e CMD` writes files or
+    /// runs programs, so anything but a plain print/delete/substitute script is review.
+    private func sed(_ args: [String]) -> CommandResult {
+        var scripts: [String] = []
+        var scriptFromFile = false
+        var inPlace = false
+        var operands: [String] = []
+        var i = 0
+        var afterDoubleDash = false
+        while i < args.count {
+            let a = args[i]
+            let next = i + 1 < args.count ? args[i + 1] : nil
+            i += 1
+            if afterDoubleDash { operands.append(a); continue }
+            if a == "--" { afterDoubleDash = true; continue }
+            if a == "-e" || a == "--expression" {
+                if let next { scripts.append(next) }
+                i += 1
+            } else if a.hasPrefix("--expression=") {
+                scripts.append(String(a.dropFirst("--expression=".count)))
+            } else if a == "-f" || a == "--file" {
+                scriptFromFile = true
+                i += 1
+            } else if a.hasPrefix("--file=") {
+                scriptFromFile = true
+            } else if a.hasPrefix("--in-place") {
+                inPlace = true
+            } else if a == "-i" {
+                inPlace = true
+                if next == "" { i += 1 }  // BSD `sed -i '' …`
+            } else if a.hasPrefix("--") {
+                continue
+            } else if a.hasPrefix("-"), a.count > 1 {
+                let cluster = a.dropFirst()
+                if a.hasPrefix("-i") { inPlace = true; continue }  // -i.bak
+                if cluster.contains("i") { inPlace = true }
+                if cluster.contains("f") { scriptFromFile = true; i += 1 }
+                else if cluster.hasSuffix("e") {
+                    if let next { scripts.append(next) }
+                    i += 1
+                }
+            } else {
+                operands.append(a)
+            }
+        }
+        if scripts.isEmpty, !scriptFromFile, !operands.isEmpty { scripts = [operands.removeFirst()] }
+        let plain = !scriptFromFile && scripts.allSatisfy(Self.sedScriptIsPlain)
+        if !plain {
+            return CommandResult(verdict: review(reasons: ["Runs a sed script"]),
+                                 paths: inPlace ? [] : operands, written: inPlace ? operands : [])
+        }
+        if inPlace { return CommandResult(verdict: review(reasons: [Reason.changesFiles]), written: operands) }
+        return CommandResult(verdict: low(), paths: operands)
+    }
+
+    /// True for scripts made only of `p d q D G g H h N n P x l =`, `s/…/…/[gpIi0-9]` and `y/…/…/` commands
+    /// with simple addresses, separated by `;`. Everything else (`w`, `r`, `e`, blocks, labels, `a`/`i`/`c`
+    /// text, the `w` and `e` flags of `s`) is "not plain".
+    static func sedScriptIsPlain(_ script: String) -> Bool {
+        let c = Array(script)
+        var i = 0
+        func skipSpaces() { while i < c.count, c[i] == " " { i += 1 } }
+        func delimited(_ d: Character) -> Bool {
+            while i < c.count, c[i] != d {
+                if c[i] == "\\" { i += 1 }
+                i += 1
+            }
+            guard i < c.count else { return false }
+            i += 1
+            return true
+        }
+        func address() -> Bool {
+            guard i < c.count else { return true }
+            if c[i].isASCII, c[i].isNumber {
+                while i < c.count, c[i].isASCII, c[i].isNumber { i += 1 }
+            } else if c[i] == "$" {
+                i += 1
+            } else if c[i] == "/" {
+                i += 1
+                return delimited("/")
+            }
+            return true
+        }
+        while true {
+            skipSpaces()
+            guard address() else { return false }
+            skipSpaces()
+            if i < c.count, c[i] == "," {
+                i += 1
+                skipSpaces()
+                if i < c.count, c[i] == "+" { i += 1 }
+                guard address() else { return false }
+                skipSpaces()
+            }
+            if i < c.count, c[i] == "!" { i += 1; skipSpaces() }
+            if i < c.count, c[i] != ";" {
+                let cmd = c[i]
+                i += 1
+                if cmd == "s" || cmd == "y" {
+                    guard i < c.count else { return false }
+                    let d = c[i]
+                    guard d != "\\", d != "\n", d != " ", !d.isLetter, !d.isNumber else { return false }
+                    i += 1
+                    guard delimited(d), delimited(d) else { return false }
+                    if cmd == "s" { while i < c.count, "gpIi0123456789".contains(c[i]) { i += 1 } }
+                } else if !"pdqDGgHhNnPxl=".contains(cmd) {
+                    return false
+                }
+            }
+            skipSpaces()
+            if i >= c.count { return true }
+            guard c[i] == ";" else { return false }
+            i += 1
+        }
+    }
+
     private func find(_ args: [String], _ ctx: Context) -> CommandResult {
         var i = 0
         while i < args.count, ["-H", "-L", "-P", "-E", "-X", "-s", "-x"].contains(args[i]) { i += 1 }
@@ -317,7 +521,7 @@ struct BashClassifier {
             var j = e + 1
             while j < args.count, args[j] != ";", args[j] != "+" { sub.append(args[j]); j += 1 }
             var result = CommandResult(verdict: review(reasons: ["Runs a command on each file"]), paths: starts)
-            let (words, sudo) = Self.unwrap(sub)
+            let (words, sudo, _) = Self.unwrap(sub)
             if sudo { result.verdict = BashVerdict(level: .high, title: "Run a command as root", reasons: [Reason.root]) }
             if !words.isEmpty {
                 var c = ctx
@@ -336,22 +540,52 @@ struct BashClassifier {
         return CommandResult(verdict: low(), paths: starts)
     }
 
-    private func git(_ args: [String]) -> CommandResult {
+    /// git config keys whose value is a program git runs.
+    private static let gitProgramKeys = [
+        "fsmonitor", "pager", "editor", "sshcommand", "hookspath", "external", "textconv", "alias.", "helper",
+        "proxy", "filter.", "program", "cmd", "command", "askpass", "exec", "driver", "browser", "sendmail",
+    ]
+
+    /// `git -c KEY=VALUE`: review; when KEY names a program (core.fsmonitor, core.pager, diff.external,
+    /// alias.x, ...) VALUE is classified as the command it is.
+    private func gitConfigOverride(_ setting: String?, _ ctx: Context) -> BashVerdict {
+        guard let setting, let eq = setting.firstIndex(of: "=") else { return review(reasons: ["Overrides git config"]) }
+        let key = setting[..<eq].lowercased()
+        var value = String(setting[setting.index(after: eq)...])
+        guard Self.gitProgramKeys.contains(where: key.contains) else { return review(reasons: ["Overrides git config"]) }
+        if value.hasPrefix("!") { value.removeFirst() }  // alias.x='!cmd'
+        return runsProgram(value, ctx)
+    }
+
+    private func git(_ args: [String], _ ctx: Context) -> CommandResult {
         var i = 0
         var paths: [String] = []
+        var written: [String] = []
+        /// From options that override config or run programs; the final verdict is never below it.
+        var floor: BashVerdict?
+        func raise(_ v: BashVerdict) { if v.level >= (floor?.level ?? .low) { floor = v } }
         while i < args.count, args[i].hasPrefix("-") {
             let a = args[i]
             if a == "-C" || a == "--git-dir" || a == "--work-tree" {
                 if i + 1 < args.count { paths.append(args[i + 1]) }
                 i += 2; continue
             }
-            if a == "-c" || a == "--namespace" || a == "--exec-path" { i += 2; continue }
+            if a == "-c" || a == "--config-env" {
+                raise(a == "-c" ? gitConfigOverride(i + 1 < args.count ? args[i + 1] : nil, ctx) : review(reasons: ["Overrides git config"]))
+                i += 2; continue
+            }
+            if a == "--namespace" { i += 2; continue }
+            if a.hasPrefix("--config-env=") || a.hasPrefix("--exec-path=") || (a.hasPrefix("-c") && a.count > 2) {
+                raise(review(reasons: ["Overrides git config"]))
+            }
             if a.hasPrefix("--git-dir=") || a.hasPrefix("--work-tree="), let eq = a.firstIndex(of: "=") {
                 paths.append(String(a[a.index(after: eq)...]))
             }
             i += 1
         }
-        guard i < args.count else { return CommandResult(verdict: low(), paths: paths) }
+        guard i < args.count else {
+            return CommandResult(verdict: floor ?? low(), paths: paths)
+        }
         let sub = args[i]
         let rest = Array(args[(i + 1)...])
         let flags = rest.filter { $0.hasPrefix("-") && $0 != "--" }
@@ -371,8 +605,31 @@ struct BashClassifier {
         }
         if sub == "grep" { pos = Array(pos.dropFirst()) }  // the pattern
         paths += pos
+        // Options that write a file or run a program, on any subcommand.
+        for (k, a) in rest.enumerated() {
+            if a == "--" { break }
+            let next = k + 1 < rest.count ? rest[k + 1] : nil
+            if a == "--output" { if let next { written.append(next) } }
+            else if a.hasPrefix("--output=") { written.append(String(a.dropFirst("--output=".count))) }
+            else if a == "--ext-diff" { raise(review(reasons: [Reason.runsProgram])) }
+            else if sub == "grep", a.hasPrefix("--open-files-in-pager") {
+                raise(runsProgram(a.contains("=") ? String(a[a.index(after: a.firstIndex(of: "=")!)...]) : nil, ctx))
+            } else if sub == "grep", a.hasPrefix("-"), !a.hasPrefix("--"), let o = a.firstIndex(of: "O") {
+                raise(runsProgram(String(a[a.index(after: o)...]), ctx))  // -O[<pager>]
+            } else {
+                for flag in ["--upload-pack", "--receive-pack", "--exec"] {
+                    if a == flag { raise(runsProgram(next, ctx)) }
+                    else if a.hasPrefix(flag + "=") { raise(runsProgram(String(a.dropFirst(flag.count + 1)), ctx)) }
+                }
+            }
+        }
         func shortFlag(_ ch: Character) -> Bool { flags.contains { !$0.hasPrefix("--") && $0.dropFirst().contains(ch) } }
-        func result(_ v: BashVerdict) -> CommandResult { CommandResult(verdict: v, paths: paths) }
+        func result(_ v: BashVerdict) -> CommandResult {
+            if let floor, floor.level >= v.level, floor.level > .low {
+                return CommandResult(verdict: floor, paths: paths, written: written)
+            }
+            return CommandResult(verdict: v, paths: paths, written: written)
+        }
         let changes = review(reasons: [Reason.changesRepo])
 
         switch sub {
@@ -444,7 +701,24 @@ struct BashClassifier {
         return !["fix", "deploy", "publish", "release", "write"].contains { lower.contains($0) }
     }
 
+    /// Options that do not change what a script runs. Anything else in front of `--` (for example
+    /// `--script-shell=…`, `--prefix …`, `--node-options=…`) makes a "low" package-manager call review.
+    private static let harmlessNodeFlags: Set<String> = [
+        "--silent", "-s", "--quiet", "-q", "--verbose", "--if-present", "--watch", "--no-watch", "--coverage", "--ci",
+        "--bail", "--color", "--no-color", "--run", "--runInBand", "--passWithNoTests", "--watchAll=false",
+        "--version", "-v", "--help", "-h", "--workspaces", "-ws", "--json", "--long", "--all", "-a", "--depth=0",
+    ]
+
     private func nodePackageManager(_ name: String, _ args: [String], paths: [String]) -> CommandResult {
+        var result = nodePackageManagerCommand(name, args, paths: paths)
+        let own = args.prefix { $0 != "--" }.filter { $0.hasPrefix("-") }
+        if result.verdict.level == .low, own.contains(where: { !Self.harmlessNodeFlags.contains($0) }) {
+            result.verdict = review(reasons: [Reason.customOptions])
+        }
+        return result
+    }
+
+    private func nodePackageManagerCommand(_ name: String, _ args: [String], paths: [String]) -> CommandResult {
         guard let sub = Self.firstNonFlag(args) else {
             // A bare `yarn` installs; bare npm/pnpm/bun print help.
             return CommandResult(verdict: name == "yarn" ? installVerdict("install") : low())
@@ -487,6 +761,7 @@ struct BashClassifier {
     private func make(_ args: [String]) -> CommandResult {
         var targets: [String] = []
         var paths: [String] = []
+        var custom = false
         var i = 0
         while i < args.count {
             let a = args[i]
@@ -498,11 +773,14 @@ struct BashClassifier {
                 i += (i + 1 < args.count && Int(args[i + 1]) != nil) ? 2 : 1
                 continue
             }
-            if a.hasPrefix("-") || Self.isAssignment(a) { i += 1; continue }
+            // `SHELL=./x`, `CC=./x` and `--eval=…` change what the targets run.
+            if Self.isAssignment(a) || a.hasPrefix("--eval") || a == "-E" { custom = true; i += 1; continue }
+            if a.hasPrefix("-") { i += 1; continue }
             targets.append(a)
             i += 1
         }
-        let safe = targets.allSatisfy { ["test", "build"].contains($0) }
+        // A bare `make` runs whatever the default target is.
+        let safe = !custom && !targets.isEmpty && targets.allSatisfy { ["test", "build"].contains($0) }
         return CommandResult(verdict: safe ? low() : review(reasons: [Reason.unfamiliar]), paths: paths)
     }
 
@@ -656,6 +934,53 @@ struct BashClassifier {
         return out
     }
 
+    /// Non-flag arguments, skipping the values of `valueFlags` (`uniq -f 2 in out` -> ["in", "out"]).
+    static func operands(_ args: [String], valueFlags: Set<String>) -> [String] {
+        var out: [String] = []
+        var i = 0
+        var afterDoubleDash = false
+        while i < args.count {
+            let a = args[i]
+            i += 1
+            if afterDoubleDash { out.append(a); continue }
+            if a == "--" { afterDoubleDash = true; continue }
+            if valueFlags.contains(a) { i += 1; continue }
+            if a.hasPrefix("-"), a.count > 1 { continue }
+            out.append(a)
+        }
+        return out
+    }
+
+    /// Variables that only switch a mode: setting them in front of a command does not change what runs.
+    private static let harmlessVariables: Set<String> = [
+        "NODE_ENV", "CI", "DEBUG", "FORCE_COLOR", "NO_COLOR", "COLOR", "CLICOLOR", "CLICOLOR_FORCE", "TERM", "TZ",
+        "LANG", "LANGUAGE", "RAILS_ENV", "RACK_ENV", "APP_ENV", "ENVIRONMENT", "PORT", "HOST", "LOG_LEVEL", "VERBOSE",
+        "RUST_BACKTRACE", "PYTHONUNBUFFERED", "PYTHONDONTWRITEBYTECODE", "CGO_ENABLED", "GOOS", "GOARCH", "COLUMNS",
+        "LINES", "TEST_ENV", "UPDATE_SNAPSHOTS",
+    ]
+
+    private static func variableName(_ assignment: String) -> String {
+        var name = assignment.prefix { $0 != "=" }
+        if name.hasSuffix("+") { name = name.dropLast() }
+        return String(name)
+    }
+
+    /// `VAR=value command`: anything but a known mode switch may change which program runs or how
+    /// (PATH, GIT_EXTERNAL_DIFF, DYLD_INSERT_LIBRARIES, NODE_OPTIONS, npm_config_script_shell, ...).
+    static func isRiskyEnvironment(_ assignment: String) -> Bool {
+        let name = variableName(assignment)
+        return !harmlessVariables.contains(name) && !name.hasPrefix("LC_")
+    }
+
+    /// A bare `VAR=value` (no command): lower-case names are script locals; the rest is treated like
+    /// an environment change for the commands that follow.
+    static func isRiskyShellVariable(_ assignment: String) -> Bool {
+        let name = variableName(assignment)
+        guard isRiskyEnvironment(assignment) else { return false }
+        if name.lowercased().hasPrefix("npm_config") { return true }
+        return !name.contains(where: \.isLowercase)
+    }
+
     static func firstNonFlag(_ args: [String]) -> String? {
         args.first { !$0.hasPrefix("-") }
     }
@@ -679,11 +1004,17 @@ struct BashClassifier {
     }
 
     /// Removes leading assignments and wrappers (`sudo`, `env`, `nohup`, `xargs`, ...).
-    static func unwrap(_ words: [String]) -> (words: [String], sudo: Bool) {
+    /// `env` is true when an assignment or an `env` option may change which program runs
+    /// (see `isRiskyEnvironment`). `env -S "cmd args"` is replaced by the words of its string.
+    static func unwrap(_ words: [String]) -> (words: [String], sudo: Bool, env: Bool) {
         var w = words[...]
         var sudo = false
+        var env = false
         loop: while true {
-            while let f = w.first, isAssignment(f) { w = w.dropFirst() }
+            while let f = w.first, isAssignment(f) {
+                if isRiskyEnvironment(f) { env = true }
+                w = w.dropFirst()
+            }
             guard let f = w.first else { break }
             switch commandName(f) {
             case "sudo", "doas", "run0":
@@ -695,11 +1026,45 @@ struct BashClassifier {
                     w = w.dropFirst(takesValue ? 2 : 1)
                 }
             case "env":
-                guard w.dropFirst().contains(where: { !$0.hasPrefix("-") && !isAssignment($0) }) else { break loop }
-                w = w.dropFirst()
-                while let g = w.first, g.hasPrefix("-") || isAssignment(g) {
-                    w = w.dropFirst(["-u", "-C", "-S", "-P"].contains(g) ? 2 : 1)
+                let rest = Array(w.dropFirst())
+                var split: [String] = []
+                var risky = false
+                var i = 0
+                scan: while i < rest.count {
+                    let g = rest[i]
+                    if g == "--" { i += 1; break scan }
+                    if g == "-S" || g == "--split-string" {
+                        // `env -S 'cmd args'` runs cmd: read the string as the command it is.
+                        if i + 1 < rest.count { split = splitString(rest[i + 1]) }
+                        risky = true
+                        i += 2
+                        break scan
+                    }
+                    if g.hasPrefix("--split-string=") || (g.hasPrefix("-S") && g.count > 2) {
+                        split = splitString(String(g.dropFirst(g.hasPrefix("--") ? "--split-string=".count : 2)))
+                        risky = true
+                        i += 1
+                        break scan
+                    }
+                    if ["-u", "--unset"].contains(g) { i += 2; continue }
+                    if ["-C", "--chdir", "-P"].contains(g) { risky = true; i += 2; continue }
+                    if g.hasPrefix("-") {
+                        // A cluster such as `-iS` hides a split string: do not try to parse it.
+                        if !g.hasPrefix("--"), g.contains("S") || g.contains("P") || g.contains("C") { risky = true }
+                        i += 1
+                        continue
+                    }
+                    if isAssignment(g) {
+                        if isRiskyEnvironment(g) { risky = true }
+                        i += 1
+                        continue
+                    }
+                    break scan
                 }
+                let remaining = split + rest[min(i, rest.count)...]
+                guard !remaining.isEmpty else { break loop }  // a bare `env` prints the environment
+                if risky { env = true }
+                w = remaining[...]
             case "command":
                 if let next = w.dropFirst().first, next == "-v" || next == "-V" { break loop }
                 w = w.dropFirst()
@@ -724,7 +1089,14 @@ struct BashClassifier {
                 break loop
             }
         }
-        return (Array(w), sudo)
+        return (Array(w), sudo, env)
+    }
+
+    /// The words of an `env -S` string: split on whitespace, quotes dropped.
+    private static func splitString(_ text: String) -> [String] {
+        text.split(whereSeparator: { $0 == " " || $0 == "\t" || $0 == "\n" })
+            .map { $0.filter { $0 != "\"" && $0 != "'" } }
+            .filter { !$0.isEmpty }
     }
 
     static func dedupe(_ items: [String]) -> [String] {

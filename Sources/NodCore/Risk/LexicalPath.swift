@@ -81,7 +81,8 @@ enum LexicalPath {
     }
 
     /// Secrets and credentials: `.env*`, anything under a `.ssh` folder, `.claude/settings*`,
-    /// `*.pem`, `*.key`, ssh private keys (`id_rsa*`, `id_ed25519*`, ...), keychains.
+    /// `*.pem`, `*.key`, ssh private keys (`id_rsa*`, `id_ed25519*`, ...), keychains, `.aws`, `.netrc`,
+    /// `.npmrc`, `.pypirc`, `.docker/config.json`, `gh/hosts.yml`, shell history.
     /// Checked by path components, so it works for any home folder.
     static func isSensitive(_ path: String) -> Bool {
         let comps = normalize(path).split(separator: "/").map { String($0).lowercased() }
@@ -93,7 +94,26 @@ enum LexicalPath {
         if name.hasSuffix(".pem") || name.hasSuffix(".key") || name.hasSuffix(".p12") { return true }
         for key in ["id_rsa", "id_ed25519", "id_ecdsa", "id_dsa"] where name.hasPrefix(key) { return true }
         if name.contains(".keychain") || comps.contains("keychains") { return true }
+        // Other credential stores and shell history.
+        let dirs = comps.dropLast()
+        if dirs.contains(".aws") || dirs.contains(".gnupg") || name == ".aws" || name == ".gnupg" { return true }
+        if [".netrc", ".npmrc", ".pypirc", ".git-credentials", ".pgpass"].contains(name) { return true }
+        if name.hasPrefix("."), name.hasSuffix("_history") { return true }  // .zsh_history, .bash_history, ...
+        let parent = dirs.last ?? ""
+        if (parent == ".docker" && name == "config.json") || (parent == "gh" && name == "hosts.yml")
+            || (parent == ".kube" && name == "config") { return true }
         return false
+    }
+
+    /// Files that make later commands run code: anything under `.git/` (hooks, config) or `.claude/`
+    /// (settings, hooks, commands), and `.mcp.json`. Writing one is high risk and never gets an
+    /// always-allow rule.
+    static func isCodeConfig(_ path: String) -> Bool {
+        let comps = normalize(path).split(separator: "/").map { String($0).lowercased() }
+        guard let name = comps.last else { return false }
+        if name == ".mcp.json" { return true }
+        let dirs = comps.dropLast()
+        return dirs.contains(".git") || dirs.contains(".claude")
     }
 
     /// Words that could name a path outside the project: absolute, `~` or `$HOME` based, or containing `..`.

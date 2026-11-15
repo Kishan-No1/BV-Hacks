@@ -258,3 +258,79 @@ private func suggest(_ store: RulesStore, _ tool: String, _ input: JSONValue, cw
         #expect(reloaded.rules.reduce(0) { $0 + $1.hitCount } == 40)
     }
 }
+
+// MARK: - Review findings: prefix rules must not approve writes outside the repo or arbitrary programs
+
+@Suite struct RulesStoreHardeningTests {
+    /// Makes the rule the way the UI does (suggestion + add) from `seed`, then asks whether `attack` matches.
+    private func autoAllowed(_ t: TempRepo, seed: String, attack: String) -> Bool {
+        let store = RulesStore(fileURL: nil)
+        if let s = suggest(store, "Bash", bashInput(seed), cwd: t.root) { store.add(s.makeRule()) }
+        return store.match(toolName: "Bash", toolInput: bashInput(attack), cwd: t.root) != nil
+    }
+
+    @Test(arguments: [
+        ("sed -i 's/a/b/' x.txt", "sed -n 'w /Users/yuki/.zshrc' README.md"),
+        ("rg TODO", "rg --pre 'rm -rf ~' foo"),
+        ("git grep TODO", "git grep -O'rm -rf ~' foo"),
+        ("git diff", "git diff --output=/Users/yuki/.zshrc"),
+        ("git diff", "git diff --output=out.patch"),
+        ("git log", "git log --output=/Users/yuki/.zshrc"),
+        ("git log", "git log --output out.txt"),
+        ("npm test", "npm test --script-shell=./evil.sh"),
+        ("make test", "make test SHELL=./evil.sh"),
+        ("cp a.txt b.txt", "cp evil .git/hooks/pre-commit"),
+        ("cp a.txt b.txt", "cp evil .mcp.json"),
+        ("cp a.txt b.txt", "cp --target-directory=.git/hooks evil"),
+        ("sort names.txt", "sort -o src/main.swift /dev/null"),
+        ("git status", "git status --ext-diff"),
+        ("git diff", "git diff --ext-diff"),
+        ("ls", "ls --foo=bar"),
+        ("awk '{print $1}' x", "awk 'BEGIN{system(\"id\")}'"),
+        ("git commit -m x", "git commit --amend"),
+        ("mkdir build", "mkdir -m 777 build"),
+    ])
+    func attackIsNotAutoAllowed(seed: String, attack: String) throws {
+        let t = try TempRepo(); defer { t.cleanup() }
+        #expect(!autoAllowed(t, seed: seed, attack: attack), "\(seed) -> \(attack)")
+    }
+
+    @Test(arguments: [
+        ("npm test", "npm test -- src/auth"), ("ls", "ls -la src"), ("git status", "git status --short"),
+        ("git diff", "git diff --stat HEAD~1"), ("cat README.md", "cat src/a.ts"), ("cp a.txt b.txt", "cp -r src dst"),
+        ("git commit -m x", "git commit -am wip"), ("mkdir build", "mkdir -p build/out"), ("make test", "make test"),
+        ("cargo test", "cargo test --all"), ("npm run lint", "npm run lint"),
+    ])
+    func ordinaryUseStillMatches(seed: String, use: String) throws {
+        let t = try TempRepo(); defer { t.cleanup() }
+        #expect(autoAllowed(t, seed: seed, attack: use), "\(seed) -> \(use)")
+    }
+
+    @Test(arguments: ["sed -n 1p x.txt", "gsed -n 1p x.txt", "awk '{print}' x.txt", "rg TODO", "sed -i 's/a/b/' x.txt"])
+    func noRuleIsOfferedForScriptingTools(command: String) throws {
+        let t = try TempRepo(); defer { t.cleanup() }
+        #expect(suggest(RulesStore(fileURL: nil), "Bash", bashInput(command), cwd: t.root) == nil, "\(command)")
+    }
+
+    @Test func aStoredRuleForAScriptingToolNoLongerMatches() throws {
+        let t = try TempRepo(); defer { t.cleanup() }
+        let store = RulesStore(fileURL: nil)
+        store.add(Rule(repo: t.root, tool: "Bash", commandPrefix: "sed"))
+        store.add(Rule(repo: t.root, tool: "Bash", commandPrefix: "rg"))
+        #expect(store.match(toolName: "Bash", toolInput: bashInput("sed -n 1p x.txt"), cwd: t.root) == nil)
+        #expect(store.match(toolName: "Bash", toolInput: bashInput("rg TODO"), cwd: t.root) == nil)
+    }
+
+    @Test func editRulesSkipFilesThatRunCode() throws {
+        let t = try TempRepo(); defer { t.cleanup() }
+        let store = RulesStore(fileURL: nil)
+        store.add(Rule(repo: t.root, tool: "Write", commandPrefix: nil))
+        for path in [".git/hooks/pre-commit", ".git/config", ".mcp.json", ".claude/hooks/x.sh"] {
+            let input: JSONValue = ["file_path": .string(t.root + "/" + path), "content": "x"]
+            #expect(store.match(toolName: "Write", toolInput: input, cwd: t.root) == nil, "\(path)")
+            #expect(suggest(store, "Write", input, cwd: t.root) == nil, "\(path)")
+        }
+        let ok: JSONValue = ["file_path": .string(t.root + "/src/a.ts"), "content": "x"]
+        #expect(store.match(toolName: "Write", toolInput: ok, cwd: t.root) != nil)
+    }
+}
