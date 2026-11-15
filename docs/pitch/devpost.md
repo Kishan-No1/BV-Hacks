@@ -4,8 +4,6 @@
 >
 > **Demo video:** `video/out/nod-demo.mp4` (76 s) · **Built with:** Swift 6, SwiftUI (Liquid Glass), AppKit, Network.framework, Claude Code hooks, bash/curl/jq, Remotion
 >
-> *Before submitting, check "How we built it" against what shipped. It follows `docs/superpowers/specs/2026-11-15-nod-design.md`.*
-
 ## Inspiration
 
 We run several Claude Code sessions at once, each in its own worktree: one fixing auth, one rewriting copy, one chasing a flaky CI cache. They're fast, but they keep stopping to ask. *Can I run `npm test`? Can I edit `session.ts`?* Each question means finding the right terminal, reading the prompt, and typing "1". Then you lose your place in what you were doing. It happens dozens of times a day.
@@ -36,13 +34,15 @@ Nod is a macOS menu-bar app that turns the notch into a control surface for ever
 - `RiskEngine`: a pure function from (tool, input, cwd) to an assessment: level, title, reason chips and diff preview. It parses the shell command and resolves its paths, and anything that reaches outside the repo is raised a level. Titles come from templates and read like a person wrote them. We deliberately didn't use an LLM here: an advisor in the approval path has to be instant, deterministic and offline.
 - `SessionStore`: sessions, steps, the request queue and the auto-allowed counter.
 - `RulesStore`: per-repo "always allow" rules, saved as JSON.
-- `HookServer`: an `NWListener` HTTP server bound to localhost.
+- `HookServer`: an `NWListener` HTTP server bound to localhost. It rejects browser-originated requests (any `Origin` header, a cross-site `Sec-Fetch-Site`, or a non-loopback `Host`), so a web page can't put fake cards in your notch.
 
 **The app (SwiftUI + AppKit).** A borderless, non-activating `NSPanel` sits above the menu bar on every Space, sized to the real notch from `NSScreen.safeAreaInsets`. Clicks pass through everywhere except the island. The island opens with `.spring(response: 0.5, dampingFraction: 0.8)` and closes critically damped. It stays solid black where it meets the hardware notch and turns into native Liquid Glass (`.glassEffect`) at the bottom edge. Global hotkeys use Carbon `RegisterEventHotKey`.
 
 **Design first.** We iterated on a clickable HTML prototype (`docs/design/prototype.html`) through three versions, from tabs, to a progress-first layout, to true-scale sizing with liquid glass. Then we built the SwiftUI views to match it one to one.
 
-**The demo video** is a Remotion (React) project. We ported the prototype's island to React components with the same CSS, so it's pixel-faithful. We converted the SwiftUI spring parameters to Remotion's `spring()` and drove everything from the frame number. Scene timing comes from the measured length of each voiceover line, so swapping in the final narration re-times the whole video.
+**How we built it in a day: an AI agent team.** We planned with Claude: idea research, three prototype iterations, then a written design spec. The build ran as a multi-agent workflow. A Claude Fable 5.2 orchestrator checked the hook API against the live docs, wrote the plan and the shared Swift contracts, and handed out work. Claude Opus 5.5 agents built the risk engine, the hook bridge, the notch UI and this video in parallel. The orchestrator then integrated everything and ran an end-to-end simulated session. An adversarial reviewer tried to break the result; it found commands rated "low" that shouldn't have been, plus a localhost CSRF hole, and both were fixed before submission. The Swift package ships with 275 tests.
+
+**The demo video** is a Remotion (React) project. We ported the prototype's island to React components with the same CSS, so it's pixel-faithful. We converted the SwiftUI spring parameters to Remotion's `spring()` and drove everything from the frame number. Scene timing comes from the measured length of each voiceover line, so swapping in the final narration re-times the whole video. The narration is ElevenLabs (voice "Brian").
 
 ## Challenges we ran into
 
