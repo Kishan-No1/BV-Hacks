@@ -1,0 +1,77 @@
+#!/bin/bash
+# Builds Nod in release and wraps it into build/Nod.app (LSUIElement menu-bar agent, ad-hoc signed).
+#
+#   scripts/bundle.sh            # SCRATCH=.build/bundle by default
+#   SCRATCH=.build/x scripts/bundle.sh
+#
+# Idempotent: the old bundle is removed first. Copies hooks/nod-hook.sh and
+# scripts/{install-hooks.sh,uninstall-hooks.sh} into Contents/Resources when they exist.
+# OWNER: workstream C (app-ui).
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+cd "$ROOT"
+
+SCRATCH="${SCRATCH:-.build/bundle}"
+APP="$ROOT/build/Nod.app"
+VERSION="0.1.0"
+
+echo "bundle: swift build -c release --scratch-path $SCRATCH --product Nod" >&2
+swift build -c release --scratch-path "$SCRATCH" --product Nod >&2
+BIN_DIR="$(swift build -c release --scratch-path "$SCRATCH" --show-bin-path)"
+BIN="$BIN_DIR/Nod"
+[ -x "$BIN" ] || { echo "bundle: no binary at $BIN" >&2; exit 1; }
+
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp "$BIN" "$APP/Contents/MacOS/Nod"
+chmod 755 "$APP/Contents/MacOS/Nod"
+
+cat > "$APP/Contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>dev.nod.app</string>
+	<key>CFBundleName</key>
+	<string>Nod</string>
+	<key>CFBundleDisplayName</key>
+	<string>Nod</string>
+	<key>CFBundleExecutable</key>
+	<string>Nod</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$VERSION</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+</dict>
+</plist>
+EOF
+plutil -lint "$APP/Contents/Info.plist" >/dev/null
+
+copy_resource() {
+  local src="$1" dest="$2"
+  if [ -f "$ROOT/$src" ]; then
+    mkdir -p "$(dirname "$APP/Contents/Resources/$dest")"
+    cp "$ROOT/$src" "$APP/Contents/Resources/$dest"
+    chmod 755 "$APP/Contents/Resources/$dest"
+  else
+    echo "bundle: warning: $src not found, skipping" >&2
+  fi
+}
+copy_resource hooks/nod-hook.sh hooks/nod-hook.sh
+copy_resource scripts/install-hooks.sh scripts/install-hooks.sh
+copy_resource scripts/uninstall-hooks.sh scripts/uninstall-hooks.sh
+
+codesign --force --sign - "$APP" >&2
+echo "$APP"
