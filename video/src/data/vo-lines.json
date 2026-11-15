@@ -1,0 +1,33 @@
+{
+  "voice": "Samantha",
+  "rate": 182,
+  "lines": [
+    { "id": "01a-problem", "beat": "problem", "text": "Four Claude Code agents. Four terminals.", "caption": "4 agents. 4 terminals." },
+    { "id": "01b-problem", "beat": "problem", "text": "And every one keeps stopping to ask. Can I run npm test? Can I edit this file?", "say": "And every one keeps stopping to ask. [[slnc 120]] Can I run N P M test? [[slnc 80]] Can I edit this file?", "caption": "Each one stops to ask permission" },
+    { "id": "01c-problem", "beat": "problem", "text": "So you switch windows all day, just to say yes.", "caption": "So you switch windows. All day." },
+
+    { "id": "02a-reveal", "beat": "reveal", "text": "Meet Nod.", "caption": "Meet Nod" },
+    { "id": "02b-reveal", "beat": "reveal", "text": "It puts your agents in the MacBook notch.", "caption": "Your agents, in the notch" },
+
+    { "id": "03a-progress", "beat": "progress", "text": "Hover, and you see what each agent is doing.", "caption": "Hover for progress" },
+    { "id": "03b-progress", "beat": "progress", "text": "Its task, the steps it's done, and the tool running right now.", "caption": "Task · steps · the live tool" },
+    { "id": "03c-progress", "beat": "progress", "text": "Click an avatar to check on another session.", "caption": "One avatar per session" },
+
+    { "id": "04a-approve", "beat": "approve", "text": "When an agent needs you, the notch asks.", "caption": "When an agent needs you, it asks" },
+    { "id": "04b-approve", "beat": "approve", "text": "Option-Return approves it.", "say": "Option Return approves it.", "caption": "{opt}{ret} to approve" },
+    { "id": "04c-approve", "beat": "approve", "text": "You never leave your editor.", "caption": "You never leave your editor" },
+
+    { "id": "05a-risk", "beat": "risk", "text": "Every request gets a plain-English risk read-out.", "caption": "A plain-English risk read-out" },
+    { "id": "05b-risk", "beat": "risk", "text": "Green is read-only, inside the repo.", "caption": "Green: read-only, inside the repo" },
+    { "id": "05c-risk", "beat": "risk", "text": "Amber is a code edit, and you see the real diff.", "caption": "Amber: a code edit, with the diff" },
+
+    { "id": "06a-high", "beat": "high", "text": "Red means stop.", "caption": "Red means stop" },
+    { "id": "06b-high", "beat": "high", "text": "Delete fourteen files outside this repo? It tells you why.", "caption": "It tells you why" },
+    { "id": "06c-high", "beat": "high", "text": "Deny is the default. Allowing takes a deliberate hold.", "caption": "Deny by default. Hold to allow." },
+
+    { "id": "07a-many", "beat": "many", "text": "Run as many agents as you like. Requests queue up, one keystroke each.", "caption": "Many agents. One queue." },
+    { "id": "07b-many", "beat": "many", "text": "Always allow npm test here, and next time it just goes through.", "say": "Always allow N P M test here, [[slnc 60]] and next time, it just goes through.", "caption": "Always allow npm test here" },
+
+    { "id": "08a-close", "beat": "close", "text": "Nod. Approve your agents from the notch.", "say": "Nod. [[slnc 250]] Approve your agents from the notch.", "caption": "" }
+  ]
+}

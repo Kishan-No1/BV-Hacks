@@ -1,0 +1,884 @@
+/*
+ * Port of docs/design/prototype.html (v3). Same class names and values.
+ * CSS transitions and @keyframes are removed on purpose: Remotion renders
+ * frame by frame, so every animated value is computed from the frame number
+ * in the components (see Island.tsx) and set inline.
+ */
+.nd {
+  --orange: #d97757;
+  --orange2: #e8916e;
+  --green: #30d158;
+  --amber: #ffb340;
+  --red: #ff453a;
+  --ink: #fff;
+  --ink2: rgba(255, 255, 255, 0.55);
+  --ink3: rgba(255, 255, 255, 0.32);
+  --card: rgba(255, 255, 255, 0.055);
+}
+
+/* ---------- screen (MacBook Pro 14" at 1512pt wide; 16:9 crop so it fills a 1080p frame) ---------- */
+/* border-radius must stay > 0: Chrome drops the .glass mask-image (a hard edge where the glass starts)
+   when its backdrop-filter references an SVG filter and no ancestor has a rounded overflow clip.
+   The prototype got this for free from .stage { overflow:hidden; border-radius:16px }. */
+.nd .screen {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1512px;
+  height: 851px;
+  overflow: hidden;
+  border-radius: 0.5px;
+  transform-origin: 0 0;
+  background:
+    radial-gradient(1400px 700px at 10% 120%, #ff7a45 0%, transparent 55%),
+    radial-gradient(1200px 700px at 92% 125%, #7b3fe4 0%, transparent 60%),
+    linear-gradient(180deg, #1a1e3a 0%, #2b2357 55%, #4a2a5e 100%);
+}
+.nd .menubar {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 37px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  color: #fff;
+  font:
+    500 13.5px/1 system-ui,
+    -apple-system,
+    sans-serif;
+  background: rgba(20, 20, 35, 0.32);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  z-index: 1;
+}
+.nd .menubar .l,
+.nd .menubar .r {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+.nd .menubar .l b {
+  font-weight: 700;
+}
+.nd .menubar .dim {
+  opacity: 0.9;
+  font-weight: 400;
+}
+.nd .win {
+  position: absolute;
+  left: 330px;
+  right: 40px;
+  top: 52px;
+  bottom: -20px;
+  border-radius: 12px;
+  background: rgba(26, 26, 32, 0.96);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+.nd .win .bar {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.nd .win .bar i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: block;
+}
+.nd .win .bar .t {
+  margin-left: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  font: 12.5px system-ui;
+}
+.nd .win pre {
+  margin: 0;
+  padding: 16px 24px;
+  color: rgba(255, 255, 255, 0.62);
+  font:
+    15px/1.75 ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
+  white-space: pre;
+}
+.nd .win pre .kw {
+  color: #c792ea;
+}
+.nd .win pre .s {
+  color: #c3e88d;
+}
+.nd .win pre .c {
+  color: rgba(255, 255, 255, 0.3);
+}
+.nd .win pre .f {
+  color: #82aaff;
+}
+.nd .win pre .n {
+  color: #f78c6c;
+}
+.nd .side {
+  position: absolute;
+  left: 40px;
+  top: 52px;
+  width: 270px;
+  bottom: -20px;
+  border-radius: 12px;
+  background: rgba(30, 30, 38, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 18px 16px;
+  color: rgba(255, 255, 255, 0.7);
+  font: 14px/2.2 system-ui;
+  box-sizing: content-box;
+}
+.nd .side b {
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ---------- island ---------- */
+.nd .hw-notch {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 185px;
+  height: 32px;
+  transform: translateX(-50%);
+  background: #000;
+  border-radius: 0 0 10px 10px;
+  z-index: 3;
+}
+.nd .island {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 185px;
+  height: 32px;
+  color: var(--ink);
+  z-index: 4;
+  overflow: hidden;
+  border-radius: 0 0 var(--r, 10px) var(--r, 10px);
+  font:
+    14px/1.35 system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.nd .island .bgs {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  z-index: 0;
+}
+.nd .island.expanded .bgs {
+  background: linear-gradient(
+    180deg,
+    #000 0%,
+    #000 calc(100% - 78px),
+    rgba(0, 0, 0, 0.7) calc(100% - 36px),
+    rgba(0, 0, 0, 0.38) 100%
+  );
+}
+.nd .island .ic {
+  z-index: 2;
+}
+.nd .glass {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 74px;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  border-radius: 0 0 var(--r, 10px) var(--r, 10px);
+  -webkit-backdrop-filter: blur(3px) saturate(1.9) brightness(1.15);
+  backdrop-filter: url(#lg) blur(1.6px) saturate(1.9) brightness(1.15);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.035) 60%,
+    rgba(255, 255, 255, 0.07) 100%
+  );
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 55%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 55%);
+  box-shadow:
+    inset 0 -1.5px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -14px 18px -14px rgba(255, 255, 255, 0.22),
+    inset 1.5px 0 0 rgba(255, 255, 255, 0.1),
+    inset -1.5px 0 0 rgba(255, 255, 255, 0.1);
+}
+.nd .island.glass-under .glass {
+  z-index: 1;
+}
+.nd .island.risk-high .glass {
+  background:
+    radial-gradient(
+      90% 160% at 50% 135%,
+      rgba(255, 69, 58, 0.42),
+      rgba(255, 69, 58, 0) 70%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.05));
+}
+.nd .island.risk-med .glass {
+  background:
+    radial-gradient(
+      90% 160% at 50% 135%,
+      rgba(255, 179, 64, 0.28),
+      rgba(255, 179, 64, 0) 70%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.05));
+}
+.nd .shoulder {
+  position: absolute;
+  top: 0;
+  width: 10px;
+  height: 10px;
+  z-index: 4;
+  pointer-events: none;
+}
+.nd .shoulder.l {
+  background: radial-gradient(circle at 0 100%, transparent 9.5px, #000 10px);
+}
+.nd .shoulder.r {
+  background: radial-gradient(
+    circle at 100% 100%,
+    transparent 9.5px,
+    #000 10px
+  );
+}
+
+.nd .ic {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform-origin: 50% 0;
+}
+
+/* compact */
+.nd .ears {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 13px 0 14px;
+  white-space: nowrap;
+}
+.nd .ear {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 12.5px;
+  letter-spacing: -0.01em;
+}
+.nd .ear .muted {
+  color: var(--ink2);
+  font-weight: 500;
+}
+.nd .ear code {
+  font:
+    600 11.5px ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
+  color: var(--orange2);
+}
+.nd .clawd {
+  display: block;
+  color: var(--orange);
+  flex: 0 0 auto;
+}
+.nd .wave {
+  display: flex;
+  gap: 2.5px;
+  align-items: center;
+  height: 13px;
+}
+.nd .wave i {
+  display: block;
+  width: 3px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--orange);
+}
+.nd .badge-dot {
+  position: relative;
+}
+.nd .badge-dot::after {
+  content: "";
+  position: absolute;
+  right: -3px;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 0 1.5px #000;
+}
+.nd .ok {
+  width: 15px;
+  height: 15px;
+  color: var(--green);
+}
+
+/* expanded shell */
+.nd .xp {
+  padding: 44px 24px 18px;
+}
+.nd .top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+}
+.nd .lbl {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink2);
+  font-weight: 600;
+  font-size: 14.5px;
+  letter-spacing: -0.01em;
+}
+.nd .lbl svg {
+  width: 17px;
+  height: 17px;
+}
+.nd .rt {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.nd .avs {
+  display: flex;
+  gap: 5px;
+}
+.nd .glassy {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.1),
+    0 4px 10px -4px rgba(0, 0, 0, 0.8);
+}
+.nd .av {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #2a2a2e, #18181b);
+  display: grid;
+  place-items: center;
+  position: relative;
+  border: 0;
+  padding: 0;
+  color: inherit;
+}
+.nd .av.on {
+  background: linear-gradient(180deg, #3a2620, #23160f);
+  box-shadow:
+    0 0 0 1.5px rgba(217, 119, 87, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.nd .av[data-st]::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px #000;
+}
+.nd .av[data-st="work"]::after {
+  background: var(--orange);
+}
+.nd .av[data-st="need"]::after {
+  background: var(--amber);
+}
+.nd .av[data-st="done"]::after {
+  background: var(--green);
+}
+.nd .tabs {
+  display: flex;
+  gap: 7px;
+}
+.nd .tab {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.16),
+    rgba(255, 255, 255, 0.07)
+  );
+  color: rgba(255, 255, 255, 0.78);
+  border: 0;
+  padding: 0;
+}
+.nd .tab svg {
+  width: 16px;
+  height: 16px;
+}
+.nd .tab.on {
+  background: linear-gradient(
+    180deg,
+    rgba(48, 209, 88, 0.34),
+    rgba(48, 209, 88, 0.16)
+  );
+  color: var(--green);
+}
+.nd .who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  min-width: 0;
+}
+.nd .who .nm {
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.022em;
+}
+.nd .who .sep {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--orange);
+  flex: 0 0 auto;
+}
+.nd .who .pr {
+  color: var(--orange2);
+  font-weight: 600;
+  font-size: 14.5px;
+  letter-spacing: -0.012em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nd .xp > .who {
+  margin: 10px 0 8px;
+}
+
+/* progress */
+.nd .pg {
+  display: grid;
+  grid-template-columns: 1fr 214px;
+  gap: 18px;
+  align-items: start;
+}
+.nd .steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+.nd .steps li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 25px;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.012em;
+  color: rgba(255, 255, 255, 0.93);
+  white-space: nowrap;
+}
+.nd .steps li svg {
+  width: 14px;
+  height: 14px;
+  color: var(--orange);
+  flex: 0 0 14px;
+}
+.nd .steps li.now {
+  color: rgba(255, 255, 255, 0.55);
+}
+.nd .steps code {
+  font:
+    600 12.5px ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
+}
+.nd .card {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+}
+.nd .tool {
+  padding: 12px 14px 14px;
+  margin-top: 6px;
+}
+.nd .tool .p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--orange2);
+  font:
+    700 12.5px ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nd .tool .p svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+}
+.nd .tool .t {
+  color: var(--ink2);
+  font-weight: 600;
+  font-size: 13px;
+  margin: 6px 0 10px;
+  font-variant-numeric: tabular-nums;
+}
+.nd .bar2 {
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(217, 119, 87, 0.18);
+  overflow: hidden;
+}
+.nd .bar2 i {
+  display: block;
+  height: 100%;
+  width: 22%;
+  border-radius: 4px;
+  background: var(--orange);
+}
+.nd .tool.fin .p {
+  color: var(--green);
+  font-family: system-ui;
+}
+.nd .tool.fin .bar2 {
+  background: rgba(48, 209, 88, 0.18);
+}
+.nd .tool.fin .bar2 i {
+  width: 100%;
+  background: var(--green);
+}
+
+/* request */
+.nd .rq-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  gap: 12px;
+}
+.nd .ask {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 12px 0 9px;
+}
+.nd .ask b {
+  font-size: 16.5px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.nd .cmd {
+  padding: 9px 12px;
+  font:
+    600 12.5px/1.45 ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
+  color: rgba(255, 255, 255, 0.9);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  white-space: nowrap;
+}
+.nd .cmd .d {
+  color: var(--ink3);
+  margin-right: 7px;
+}
+.nd .cmd .why {
+  font: 500 12px system-ui;
+  color: var(--ink2);
+}
+.nd .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 11.5px;
+  padding: 4px 9px 4px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.nd .pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.nd .pill.low {
+  color: var(--green);
+  background: rgba(48, 209, 88, 0.14);
+}
+.nd .pill.med {
+  color: var(--amber);
+  background: rgba(255, 179, 64, 0.14);
+}
+.nd .pill.high {
+  color: var(--red);
+  background: rgba(255, 69, 58, 0.17);
+}
+.nd .chips {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: nowrap;
+}
+.nd .chip {
+  font: 600 11.5px system-ui;
+  color: #ffb3ad;
+  background: rgba(255, 69, 58, 0.1);
+  padding: 4px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  box-shadow: inset 0 0 0 0.5px rgba(255, 69, 58, 0.25);
+}
+.nd .diff {
+  overflow: hidden;
+  font:
+    600 12px/1.6 ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
+}
+.nd .diff .fh {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 12px;
+  color: var(--ink2);
+  font: 600 12px system-ui;
+}
+.nd .diff .fh b {
+  color: var(--orange2);
+  font:
+    700 12px ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
+}
+.nd .diff .ln {
+  padding: 0 12px;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nd .diff .ln:last-child {
+  padding-bottom: 5px;
+}
+.nd .diff .add {
+  color: #8be3a4;
+  background: rgba(48, 209, 88, 0.09);
+}
+.nd .diff .del {
+  color: #ffa29b;
+  background: rgba(255, 69, 58, 0.09);
+}
+
+/* liquid-glass buttons */
+.nd .acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.nd .btn {
+  flex: 1;
+  height: 34px;
+  border-radius: 17px;
+  border: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font:
+    600 13.5px system-ui,
+    -apple-system,
+    sans-serif;
+  letter-spacing: -0.01em;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  isolation: isolate;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.17) 0%,
+    rgba(255, 255, 255, 0.07) 55%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
+  backdrop-filter: blur(14px) saturate(1.8);
+  -webkit-backdrop-filter: blur(14px) saturate(1.8);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.16),
+    inset 0 -8px 14px -10px rgba(255, 255, 255, 0.18),
+    0 8px 18px -8px rgba(0, 0, 0, 0.9);
+}
+.nd .btn::before {
+  content: "";
+  position: absolute;
+  inset: 1px 8% auto;
+  height: 46%;
+  border-radius: 16px 16px 40% 40% / 16px 16px 12px 12px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.22),
+    rgba(255, 255, 255, 0)
+  );
+  z-index: -1;
+  pointer-events: none;
+}
+.nd .btn.pri {
+  color: #000;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f1f4 55%, #dcdce2 100%);
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 0 -2px 3px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.9),
+    0 8px 20px -8px rgba(255, 255, 255, 0.35),
+    0 2px 6px -2px rgba(0, 0, 0, 0.6);
+}
+.nd .btn.pri::before {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.9),
+    rgba(255, 255, 255, 0)
+  );
+}
+.nd .btn.red {
+  background: linear-gradient(180deg, #ff6a60 0%, #ff453a 55%, #e2382e 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.16),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.25),
+    0 10px 24px -10px rgba(255, 69, 58, 0.9);
+}
+.nd .btn.ghost {
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.82);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.03)
+  );
+}
+.nd .btn.wide {
+  flex: 1.45;
+}
+.nd .btn code {
+  font:
+    600 12px ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
+}
+.nd .kb {
+  font: 600 10.5px/1 system-ui;
+  padding: 3px 5px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.08);
+  opacity: 0.6;
+}
+.nd .btn:not(.pri) .kb {
+  background: rgba(255, 255, 255, 0.14);
+}
+.nd .btn .fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 106, 96, 0.85),
+    rgba(226, 56, 46, 0.85)
+  );
+  z-index: -1;
+}
+
+/* ---------- video-only: Claude Code terminals for the "problem" beat ---------- */
+.nd .term {
+  position: absolute;
+  border-radius: 12px;
+  background: rgba(20, 20, 26, 0.985);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.nd .term .bar {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.nd .term .bar i {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  display: block;
+}
+.nd .term .bar .t {
+  margin-left: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  font: 500 12px system-ui;
+}
+.nd .term .body {
+  padding: 12px 16px;
+  font:
+    500 13px/1.6 ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
+  color: rgba(255, 255, 255, 0.78);
+  white-space: pre;
+}
+.nd .term .dim {
+  color: rgba(255, 255, 255, 0.4);
+}
+.nd .term .or {
+  color: #d97757;
+}
+.nd .term .gr {
+  color: #8be3a4;
+}
+.nd .term .usr {
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 700;
+}
+.nd .term .perm {
+  margin-top: 8px;
+  border: 1.5px solid rgba(217, 119, 87, 0.75);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.nd .term .perm .h {
+  color: #e8916e;
+  font-weight: 700;
+}
+.nd .term .perm .sel {
+  color: #fff;
+  background: rgba(217, 119, 87, 0.28);
+  border-radius: 3px;
+}

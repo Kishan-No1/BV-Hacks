@@ -1,0 +1,41 @@
+{
+  "name": "video",
+  "version": "1.0.0",
+  "description": "Nod demo video (Remotion): approve your Claude Code agents from the notch",
+  "repository": {},
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "^20.19.0 || ^22.13.0 || >=24"
+  },
+  "private": true,
+  "dependencies": {
+    "@remotion/cli": "4.0.543",
+    "@remotion/media": "4.0.543",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "remotion": "4.0.543"
+  },
+  "devDependencies": {
+    "@remotion/eslint-config-flat": "4.0.543",
+    "@types/react": "19.3.0",
+    "@types/web": "0.0.166",
+    "eslint": "10.12.0",
+    "prettier": "3.8.1",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "dev": "remotion studio",
+    "vo": "scripts/make-vo.sh",
+    "vo:force": "scripts/make-vo.sh --force",
+    "vo:measure": "scripts/measure-vo.sh",
+    "music": "node scripts/make-music.mjs 100 16",
+    "render": "remotion render NodDemo out/nod-demo.mp4 --codec=h264 --crf=18",
+    "check": "scripts/check-render.sh",
+    "build": "remotion bundle",
+    "upgrade": "remotion upgrade",
+    "lint": "eslint src && tsc"
+  },
+  "allowScripts": {
+    "esbuild": false
+  }
+}
