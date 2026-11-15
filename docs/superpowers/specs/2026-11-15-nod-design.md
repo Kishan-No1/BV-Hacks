@@ -1,6 +1,7 @@
 # Nod: approve your coding agents from the notch (design)
 
 **Status:** the user approved the visual direction (prototype v3) and said to start building on 2026-11-15. The deadline is end of day the same day.
+**Extended by:** [the prompt composer](2026-11-15-prompt-composer.md) (polish, learned style, tmux send). That feature adds the one outbound network call Nod makes; everything in this document stays local.
 **Visual source of truth:** [`docs/design/prototype.html`](../../design/prototype.html), open it in Chrome. Screenshots: `docs/design/v3-low-risk.png` and `docs/design/v3-high-risk.png`.
 
 ## Intent
@@ -76,7 +77,7 @@ Claude Code session ──hook (stdin JSON)──▶ hooks/nod-hook.sh ──cur
 - **Motion:** open with `.spring(response: 0.5, dampingFraction: 0.8)` and close with `.spring(response: 0.38, dampingFraction: 1.0)`. Content blurs and scales in from 0.94 and is laid out at its final width, so nothing reflows. The step list fades under the bottom edge.
 - **Materials:** solid black where the island meets the notch, and native Liquid Glass (`.glassEffect`) at the bottom edge. Buttons are glass capsules, with Allow in white and Deny in red. The risk glow is a soft colored shadow only, with no outline.
 - **Input:** hover opens Progress after 120ms and closes it after 220ms. While a request is pending, Carbon `RegisterEventHotKey` binds ⌥↵ (the default: allow for low/review, deny for high) and ⌥⌫ (deny). Clicking an avatar switches the Progress view to that session.
-- **Menu-bar item:** Install Claude Code hooks…, Play demo, Quit.
+- **Menu-bar item:** Install Claude Code hooks…, Play demo, Quit. The composer adds: Write a prompt…, Polish prompts with Claude Haiku (toggle), Set Anthropic API key…, Reveal / Reset learned style.
 - **Demo mode** (`Nod --demo` or the menu): replays the prototype's story by POSTing scripted payloads to its own server. Use realistic payloads that match the real hook schema.
 
 ### 4. Demo video: `video/` (Remotion)
@@ -109,7 +110,7 @@ docs/                      # ideas, design, plans, pitch
 
 - The name **Nod**, port 47474, and macOS 26 as the minimum.
 - SwiftPM plus a bundle script, not an Xcode project, because it's easier for parallel agents to build and test.
-- Risk rules are heuristics from templates. Using an LLM for titles was rejected because of latency and an extra dependency.
+- Risk rules are heuristics from templates. Using an LLM for titles was rejected because of latency and an extra dependency. (The prompt composer does call a model, but only to rewrite a prompt the user asked it to rewrite; the risk read-out still never does.)
 - The nod-to-approve camera gesture is a stretch goal only.
 
 ## Left to the builder

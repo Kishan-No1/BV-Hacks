@@ -10,6 +10,10 @@ Running several Claude Code sessions in parallel means each one keeps stopping t
 session.ts?", and every answer costs a window switch. Nod moves progress and approvals into the notch. You see what
 every agent is doing at a glance, and you answer a request with one keystroke from whatever app you are in.
 
+The same goes for giving an agent its next task. Press `⌃⌥P`, type a rough prompt in the notch, and Nod rewrites it
+into a precise Claude Code prompt, shows it to you to edit, and types it into the session you picked when you press
+Send. It learns from your edits: add "run tests after edits" once and the next polish already has it.
+
 ## Features
 
 - **Live progress.** Collapsed, the notch shows the mascot and a wave while any session works. Hover to open
@@ -24,6 +28,14 @@ every agent is doing at a glance, and you answer a request with one keystroke fr
 - **Always-allow rules.** "Always allow `npm test`" saves a per-repo rule. Later matches are answered at once and
   counted in the menu. Rules never match compound commands, anything rated high, or anything outside the project.
 - **Several sessions.** Requests from all sessions queue up first-in, first-out.
+- **Prompt composer.** `⌃⌥P` (or a click on the session's avatar) opens a text field in the notch. **Polish** sends
+  your rough text to Claude Haiku 5.5 and puts the result in an editable pane. **Send** types it into the session's
+  tmux pane. Nothing is sent to a session until you press Send or Return on the text.
+- **Learned style.** Every send is compared with what the polish proposed. Lines you add become "Add:" notes,
+  lines and filler words you keep deleting become "Leave out" notes, and Nod tracks whether you cut or expand the
+  polish, bullets or sentences, and the verbs you use. The notes go into the next polish request, and a
+  "Learned: …" chip shows each change. A note you delete twice in a row is dropped. The learning is plain local
+  code; see [What leaves your Mac](#what-leaves-your-mac).
 - **Demo mode.** A scripted story plays through the real store and UI without Claude Code.
 
 | Low risk | Review (edit with diff) | High risk |
@@ -33,6 +45,10 @@ every agent is doing at a glance, and you answer a request with one keystroke fr
 | Working | Progress | Finished |
 |---|---|---|
 | ![working](docs/design/app-working.png) | ![progress](docs/design/app-progress.png) | ![done](docs/design/app-progress-done.png) |
+
+| Rough prompt | Polished, editable | Sent, with what was learned |
+|---|---|---|
+| ![draft](docs/design/app-composer-draft.png) | ![polished](docs/design/app-composer-polished.png) | ![sent](docs/design/app-composer-sent.png) |
 
 These images come from the app's own `--snapshot` renderer (offscreen, so the glass uses a gradient fallback). The
 design reference is [`docs/design/prototype.html`](docs/design/prototype.html).
@@ -61,18 +77,45 @@ To remove Nod's hooks (and only those):
 scripts/uninstall-hooks.sh
 ```
 
+### For the prompt composer
+
+Sending needs `tmux` (`brew install tmux`), and the session has to run inside a tmux pane that Nod knows about.
+Start Claude Code with the launcher instead of `claude`:
+
+```sh
+cd ~/code/my-repo
+/path/to/Nod/scripts/nod-claude                # tmux session "nod-my-repo", then attaches
+/path/to/Nod/scripts/nod-claude -- --model opus  # arguments after -- go to claude
+```
+
+`nod-claude` runs `claude --session-id <new uuid>` in a new tmux session and writes
+`~/Library/Application Support/Nod/panes/<session id>.json` (pane id, tmux socket, server pid, directory). Nod uses
+that file to find the pane. A session started any other way still shows up in the notch, but the composer can only
+offer **Copy** for it.
+
+Polish needs an Anthropic API key. Either start Nod from a shell that has `ANTHROPIC_API_KEY` set, or use the
+menu item **Set Anthropic API key…**, which stores it in your login Keychain (service `Nod`, account
+`anthropic-api-key`). Without a key the composer says so and you can still send the text as written.
+
 ## Usage
 
 | Do this | To |
 |---|---|
-| Hover the notch | open Progress; click an avatar to switch session |
+| Hover the notch | open Progress; click another session's avatar to switch to it |
+| `⌃⌥P` (Control-Option-P), or click the avatar of the session Progress is showing | open the prompt composer for that session; `⌃⌥P` again hides it and keeps the draft |
+| `↵` in the composer | Polish the rough text; on the polished text, Send |
+| `⇧↵` in the composer | new line |
+| `esc` in the composer | discard the prompt and close |
 | `⌥↵` (Option-Return) | take the default action: Allow for low and review, **Deny** for high |
 | `⌥⌫` (Option-Delete) | deny |
 | Press and hold "Hold to allow" for 0.9 s | allow a high-risk request |
 | Click "Always allow `<command>`" | allow, and save a rule for this repo |
 | Click "Open full diff" | open the file an edit request would change |
 
-The hotkeys are registered only while a request is showing, so they do not shadow other apps the rest of the time.
+`⌥↵` and `⌥⌫` are registered only while a request is showing, so they do not shadow other apps the rest of the time.
+`⌃⌥P` is registered while Nod runs. The composer takes the keyboard only while it is open and gives it back when
+it closes; Nod never becomes the active app. A permission request that arrives while you are writing waits (the
+composer says so) and shows as soon as the composer closes.
 A hotkey only answers the card that is on screen, and only once it has been there for half a second (and half a
 second after the previous decision), so a double tap or a key already on its way down never answers a request you
 have not read.
@@ -88,7 +131,16 @@ Safety notes:
   copy, so the hooks keep working if this checkout moves.
 You can still answer in the terminal: the first answer wins and Nod drops the request.
 
+- The composer only types into a pane that is showing Claude Code's input prompt, and never into a session that
+  has a permission request open: text typed into a dialog would answer it. In those cases, and when tmux or the
+  pane is missing, it tells you why and offers **Copy** instead.
+- Prompt text goes to tmux as an argument list or on stdin (a paste buffer for multi-line text), never through a
+  shell, AppleScript or the Accessibility API. Control characters are stripped first.
+
 Rules live in `~/Library/Application Support/Nod/rules.json`. Delete an entry there to remove a rule.
+The learned style lives in `~/Library/Application Support/Nod/style.json` (mode 0600). It is readable JSON: the
+notes with their counts, and your last 50 prompts as rough text, polish and what you sent. The menu has
+**Reveal learned style in Finder** and **Reset learned style…**.
 
 Demo and debugging:
 
@@ -98,6 +150,10 @@ scripts/simulate.sh story                      # post fixture hook payloads to a
 build/Nod.app/Contents/MacOS/Nod --snapshot build/snapshots   # render every state to PNG
 NOD_LOG=1 NOD_PORT=47480 build/Nod.app/Contents/MacOS/Nod     # debug log, another port
 ```
+
+`NOD_LOG` output never contains prompt text, polished text, style notes or the API key; composer lines are counts
+and status only (`composer: polish ok, 42 -> 180 chars, 2 style notes, 412 ms`). `NOD_STYLE_FILE`,
+`NOD_PANES_DIR` and `NOD_TMUX` point Nod at another style file, pane directory or tmux binary.
 
 ## Architecture
 
@@ -116,9 +172,16 @@ hooks/nod-hook.sh --- curl ------>  SessionStore          sessions, steps, FIFO 
    |                                    |  click / Option-Return / Option-Delete / hold
    |   held HTTP response               |
    +---- decision JSON <----------  SessionStore.resolve(...)
+
+tmux pane  <-- send-keys / paste-buffer --  TmuxPromptSender  <-- Send --  ComposerModel (island)
+(scripts/nod-claude)                                                         |  Polish        ^ notes
+                                              api.anthropic.com  <-- HTTPS --+                |
+                                              (rough text, style notes, repo names)   StyleLearner -> style.json
 ```
 
 - `Sources/NodCore`: models, hook contract, risk engine, rules, session store, HTTP server. No UI.
+  `Sources/NodCore/Compose` holds the composer's logic: the style learner and its store, the polish request,
+  the git context, and the tmux send path.
 - `Sources/Nod`: the app (panel, island views, hotkeys, demo, snapshots).
 - `hooks/nod-hook.sh`: the only thing Claude Code runs. For a `PermissionRequest` the HTTP response is held open
   until you decide, and the hook prints exactly one line:
@@ -130,26 +193,56 @@ hooks/nod-hook.sh --- curl ------>  SessionStore          sessions, steps, FIFO 
 
 The full contract is in [`docs/superpowers/plans/hook-contract.md`](docs/superpowers/plans/hook-contract.md) and the
 design in [`docs/superpowers/specs/2026-11-15-nod-design.md`](docs/superpowers/specs/2026-11-15-nod-design.md).
+The composer is specified in
+[`docs/superpowers/specs/2026-11-15-prompt-composer.md`](docs/superpowers/specs/2026-11-15-prompt-composer.md).
 
 ## Safety guarantees
 
 - **Nothing is auto-allowed except by a rule you created.** The risk engine only advises.
 - **Fail open to Claude Code's own prompt.** If Nod is not running, crashes, or times out, the hook prints nothing
   and exits 0 within milliseconds, and Claude Code asks in the terminal as usual. The hook never exits non-zero.
-- **Local only.** The server listens on 127.0.0.1. Nothing leaves the machine.
+- **Nothing is sent to a session without you.** The composer never auto-sends: Polish only fills the editable
+  pane, and text reaches a session only when you press Send (or Return on the text).
+- **One outbound call, and only when you press Polish.** See [What leaves your Mac](#what-leaves-your-mac). The
+  hook server still listens on 127.0.0.1 only, and approvals, the risk read-out, rules and progress never use the
+  network.
 - **Deny rules still win.** An allow from Nod does not override a deny rule in Claude Code's settings.
 - **`AskUserQuestion` and `ExitPlanMode` pass through** to the terminal untouched.
 - **Your settings are backed up** before the install or uninstall script changes them.
 
+## What leaves your Mac
+
+Before the composer, nothing did. Now one thing does, and only when you press **Polish**: an HTTPS request to
+`api.anthropic.com` (Messages API, model `claude-haiku-5-5`, at most 800 output tokens). It contains exactly:
+
+- the rough prompt text you typed;
+- your style notes (up to 8 short lines such as `Add: “run tests after edits”`);
+- repo context for the selected session: its directory (home shortened to `~`), the git branch, the subjects of
+  the last 3 commits, and the names of changed files from `git status --porcelain` (at most 30);
+- a fixed system prompt describing the rewriting job, and your API key in the request header.
+
+It never contains file contents, diffs, the session's transcript, permission requests, or your prompt history.
+Anthropic handles the request under the terms of your API account.
+
+Everything else stays on the machine: the style profile and its learning (plain Swift code, no model), the git
+commands that gather the context, the tmux send, and all of the approval features.
+
+To turn it off, untick **Polish prompts with Claude Haiku** in the menu. The composer then sends your text as
+written and Nod makes no network request at all. The profile still learns from what you send.
+
 ## Tests
 
 ```sh
-swift test          # 252 tests: risk engine, rules, formatter, server, store, hook scripts, island model
-scripts/e2e.sh      # bundles the app, then drives the real path with nod-hook.sh and checks the decision bytes
+swift test          # 437 tests: risk engine, rules, formatter, server, store, hook scripts, island model,
+                    # style learner, polish request, git context, tmux argv, nod-claude, composer flow
+scripts/e2e.sh      # bundles the app, then drives the real path with nod-hook.sh and checks the decision bytes;
+                    # then the composer: stub polish -> learned note -> the exact tmux argv
 ```
 
 `scripts/e2e.sh` starts the app with `--test-autodecide`, a test-only flag that answers each request through the
-same model actions as the buttons and hotkeys. It uses a private port and a temporary rules file.
+same model actions as the buttons and hotkeys. It uses a private port and a temporary rules file. The composer part
+uses `--test-compose`, which polishes with an offline stub (no network), a fake `tmux` that records its arguments,
+and temporary style and pane files. Unit tests never run tmux or call the API.
 
 ## Limitations
 
@@ -158,5 +251,12 @@ same model actions as the buttons and hotkeys. It uses a private port and a temp
   would delete, and an unusual command can be rated lower or higher than it deserves. Read the command.
 - The terminal prompt stays visible while Nod holds a request; either place can answer.
 - Rules have no editing UI yet (the Rules tab in Progress is a placeholder).
+- The composer can only send to sessions started with `scripts/nod-claude` (tmux). After `/clear` the session id
+  changes and Nod falls back to matching the pane by directory, which works only while one launcher session runs
+  in that directory.
+- The style learner is simple and literal. It compares lines by shared words, so it can learn a note you did not
+  mean; the note is dropped once you delete its effect twice, or edit `style.json`.
+- The "is this pane at its prompt" check reads the pane's text and was calibrated on Claude Code 2.1.322. If a
+  later version draws its input differently, Send reports "not at its prompt" and offers Copy.
 - Hook payloads over 1 MB are skipped, so that step is missing from the progress list.
 - Not notarized or sandboxed; the bundle is ad-hoc signed for local use.
