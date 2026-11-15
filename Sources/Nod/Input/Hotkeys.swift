@@ -115,3 +115,71 @@ final class CarbonHotkeyRegistrar: HotkeyRegistrar {
         refs.removeAll()
     }
 }
+
+/// One always-registered global hotkey (the composer's ⌃⌥P). It has its own Carbon signature, so the
+/// request hotkeys' handler ignores it and it ignores theirs.
+final class GlobalHotkey {
+    /// ⌃⌥P opens the prompt composer.
+    static let composeKeyCode = UInt32(kVK_ANSI_P)
+    static let composeModifiers = UInt32(controlKey | optionKey)
+    static let composeLabel = "⌃⌥P"
+
+    private let signature: OSType
+    private let keyCode: UInt32
+    private let modifiers: UInt32
+    private var ref: EventHotKeyRef?
+    private var handlerRef: EventHandlerRef?
+    var onPress: (() -> Void)?
+
+    var isRegistered: Bool { ref != nil }
+
+    init(keyCode: UInt32 = GlobalHotkey.composeKeyCode, modifiers: UInt32 = GlobalHotkey.composeModifiers,
+         signature: OSType = 0x4E4F_4443 /* 'NODC' */) {
+        self.keyCode = keyCode
+        self.modifiers = modifiers
+        self.signature = signature
+    }
+
+    deinit {
+        if let ref { UnregisterEventHotKey(ref) }
+        if let handlerRef { RemoveEventHandler(handlerRef) }
+    }
+
+    /// Returns false when the system refuses the registration (for example another app owns the combination).
+    @discardableResult
+    func register() -> Bool {
+        guard ref == nil else { return true }
+        if handlerRef == nil {
+            var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+            let me = Unmanaged.passUnretained(self).toOpaque()
+            let status = InstallEventHandler(GetEventDispatcherTarget(), { _, event, userData -> OSStatus in
+                guard let event, let userData else { return OSStatus(eventNotHandledErr) }
+                var hk = EventHotKeyID()
+                let err = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
+                                            nil, MemoryLayout<EventHotKeyID>.size, nil, &hk)
+                let hotkey = Unmanaged<GlobalHotkey>.fromOpaque(userData).takeUnretainedValue()
+                guard err == noErr, hk.signature == hotkey.signature else { return OSStatus(eventNotHandledErr) }
+                DispatchQueue.main.async { hotkey.onPress?() }
+                return noErr
+            }, 1, &spec, me, &handlerRef)
+            if status != noErr {
+                Log.info("hotkeys: InstallEventHandler failed for \(Self.composeLabel) (\(status))")
+                return false
+            }
+        }
+        var newRef: EventHotKeyRef?
+        let status = RegisterEventHotKey(keyCode, modifiers, EventHotKeyID(signature: signature, id: 1),
+                                         GetEventDispatcherTarget(), 0, &newRef)
+        guard status == noErr, let newRef else {
+            Log.info("hotkeys: could not register \(Self.composeLabel) (\(status))")
+            return false
+        }
+        ref = newRef
+        return true
+    }
+
+    func unregister() {
+        if let ref { UnregisterEventHotKey(ref) }
+        ref = nil
+    }
+}

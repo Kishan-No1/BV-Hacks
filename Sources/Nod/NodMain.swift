@@ -3,7 +3,8 @@ import AppKit
 import Foundation
 import NodCore
 
-/// Command-line options: `--demo`, `--demo-http`, `--snapshot DIR`, `--version`; `NOD_PORT` env.
+/// Command-line options: `--demo`, `--demo-http`, `--snapshot DIR`, `--version`; `NOD_PORT`, `NOD_RULES_FILE`,
+/// `NOD_STYLE_FILE` and `NOD_PANES_DIR` env.
 struct LaunchOptions: Equatable {
     var demo = false
     var demoHTTP = false
@@ -14,6 +15,13 @@ struct LaunchOptions: Equatable {
     var autoDecide: AutoDecideMode?
     /// Rules file override (`NOD_RULES_FILE`), so tests never touch the real rules.
     var rulesFile: String?
+    /// Style profile override (`NOD_STYLE_FILE`), so tests never touch the real learned style.
+    var styleFile: String?
+    /// Pane records override (`NOD_PANES_DIR`): where `scripts/nod-claude` wrote its session -> pane files.
+    var panesDir: String?
+    /// TEST ONLY (`--test-compose TEXT`): drive the composer without a human. Polishes with the offline stub
+    /// (never the network) and presses Send through the same model actions as the buttons.
+    var testCompose: String?
     var errors: [String] = []
 
     static func parse(_ args: [String], env: [String: String]) -> LaunchOptions {
@@ -31,6 +39,10 @@ struct LaunchOptions: Equatable {
                 if i + 1 < args.count, let m = AutoDecideMode(rawValue: args[i + 1]) { o.autoDecide = m; i += 1 } else {
                     o.errors.append("--test-autodecide needs one of: default, allow, deny, always")
                 }
+            case "--test-compose":
+                if i + 1 < args.count, !args[i + 1].isEmpty { o.testCompose = args[i + 1]; i += 1 } else {
+                    o.errors.append("--test-compose needs the prompt text")
+                }
             default:
                 if a.hasPrefix("--snapshot=") { o.snapshotDir = String(a.dropFirst("--snapshot=".count)) }
                 // Ignore other arguments (Xcode / launch services may pass -NS... flags).
@@ -41,6 +53,8 @@ struct LaunchOptions: Equatable {
             if let port = UInt16(p), port > 0 { o.port = port } else { o.errors.append("NOD_PORT=\(p) is not a valid port") }
         }
         if let f = env["NOD_RULES_FILE"], !f.isEmpty { o.rulesFile = f }
+        if let f = env["NOD_STYLE_FILE"], !f.isEmpty { o.styleFile = f }
+        if let d = env["NOD_PANES_DIR"], !d.isEmpty { o.panesDir = d }
         return o
     }
 }

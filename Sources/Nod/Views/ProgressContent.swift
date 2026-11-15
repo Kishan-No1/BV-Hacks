@@ -22,7 +22,7 @@ struct ProgressContent: View {
                 Spacer(minLength: 12)
                 HStack(spacing: 16) {
                     AvatarRow(sessions: store.sessions, ringID: session?.id) { id in
-                        model.select(sessionID: id)
+                        model.avatarClicked(id)
                     }
                     TabButtons()
                 }

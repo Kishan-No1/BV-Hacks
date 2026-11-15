@@ -23,8 +23,11 @@ final class NotchPanel: NSPanel {
         becomesKeyOnlyIfNeeded = true
     }
 
-    // Never take keyboard focus from the user's app.
-    override var canBecomeKey: Bool { false }
+    /// True only while the prompt composer is open. The rest of the time the panel never takes the keyboard
+    /// from the user's app. Even then the app itself is not activated (the panel is non-activating).
+    var allowsKey = false
+
+    override var canBecomeKey: Bool { allowsKey }
     override var canBecomeMain: Bool { false }
 
     // Allow the frame to sit over the menu bar / notch area.
@@ -47,6 +50,7 @@ final class NotchPanelController {
     private var screenObserver: NSObjectProtocol?
     private var pollTimer: Timer?
     private var stateLoop: ObservationLoop<CGSize>?
+    private var keyLoop: ObservationLoop<Bool>?
     private var trackingOwner: TrackingOwner?
 
     init(model: IslandModel) {
@@ -88,9 +92,33 @@ final class NotchPanelController {
             self?.updatePointer()
         }
         stateLoop?.start()
+        keyLoop = ObservationLoop({ [weak self] in self?.model.composer.isOpen ?? false }) { [weak self] open in
+            self?.setKeyboard(open)
+        }
+        keyLoop?.start()
+    }
+
+    /// The composer needs the keyboard; everything else must leave it with the user's app.
+    private func setKeyboard(_ wanted: Bool) {
+        guard panel.allowsKey != wanted else { return }
+        panel.allowsKey = wanted
+        if wanted {
+            panel.makeKey()
+            Log.debug("panel: took the keyboard for the composer (key=\(panel.isKeyWindow))")
+        } else {
+            // A window that can no longer be key gives the keyboard back when it is re-ordered: the system
+            // returns key status to the frontmost app's window. The panel itself stays in front.
+            panel.makeFirstResponder(nil)
+            if panel.isKeyWindow {
+                panel.orderOut(nil)
+                panel.orderFrontRegardless()
+            }
+            Log.debug("panel: gave the keyboard back (key=\(panel.isKeyWindow))")
+        }
     }
 
     func close() {
+        keyLoop?.cancel()
         if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
         if let localMonitor { NSEvent.removeMonitor(localMonitor) }
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }

@@ -55,6 +55,7 @@ enum IslandGeometry {
         case .toast(let k): return CGSize(width: notch.width + compactExtraWidth(for: k), height: notch.height)
         case .progress: return progressSize
         case .request: return CGSize(width: requestWidth, height: requestHeight ?? fallbackRequestHeight)
+        case .composer(let layout): return CGSize(width: requestWidth, height: notch.height + layout.bodyHeight)
         }
     }
 

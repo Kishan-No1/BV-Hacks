@@ -10,10 +10,13 @@ enum IslandState: Equatable {
     case progress
     case request(PendingRequest)
     case toast(Toast.Kind)
+    /// The prompt composer. The user opened it, so it stays on top; a request that arrives meanwhile waits.
+    case composer(ComposerLayout)
 
-    /// Priority: request > toast > progress (hover) > attention > working > idle.
+    /// Priority: composer > request > toast > progress (hover) > attention > working > idle.
     static func derive(sessions: [Session], currentRequest: PendingRequest?, visibleToast: Toast.Kind?,
-                       isHovering: Bool, forceProgress: Bool = false) -> IslandState {
+                       isHovering: Bool, forceProgress: Bool = false, composer: ComposerLayout? = nil) -> IslandState {
+        if let composer { return .composer(composer) }
         if let currentRequest { return .request(currentRequest) }
         if let visibleToast { return .toast(visibleToast) }
         if (isHovering || forceProgress) && !sessions.isEmpty { return .progress }
@@ -23,15 +26,16 @@ enum IslandState: Equatable {
     }
 
     @MainActor
-    static func derive(store: SessionStore, visibleToast: Toast.Kind?, isHovering: Bool, forceProgress: Bool = false) -> IslandState {
+    static func derive(store: SessionStore, visibleToast: Toast.Kind?, isHovering: Bool, forceProgress: Bool = false,
+                       composer: ComposerLayout? = nil) -> IslandState {
         derive(sessions: store.sessions, currentRequest: store.currentRequest, visibleToast: visibleToast,
-               isHovering: isHovering, forceProgress: forceProgress)
+               isHovering: isHovering, forceProgress: forceProgress, composer: composer)
     }
 
     /// Progress and requests open into the big rounded island with the glass edge.
     var isExpanded: Bool {
         switch self {
-        case .progress, .request: return true
+        case .progress, .request, .composer: return true
         default: return false
         }
     }
@@ -54,6 +58,8 @@ enum IslandState: Equatable {
         case .progress: return "progress"
         case .request(let r): return "request-\(r.id.uuidString)"
         case .toast(let k): return "toast-\(k.rawValue)"
+        // One identity for every layout: the card resizes, the text fields are never rebuilt.
+        case .composer: return "composer"
         }
     }
 
@@ -68,7 +74,22 @@ enum IslandState: Equatable {
             }
             return "request(\(level)) \(r.toolName): \(r.assessment.title)"
         case .toast(let k): return "toast(\(k.rawValue))"
+        case .composer(let l): return "composer(\(l.rawValue))"
         default: return identity
+        }
+    }
+}
+
+/// How tall the composer card is: the draft field, the draft plus the polished pane, or the short "Sent" card.
+enum ComposerLayout: String, Equatable {
+    case draft, polished, sent
+
+    /// Card height below the notch.
+    var bodyHeight: CGFloat {
+        switch self {
+        case .draft: return 232
+        case .polished: return 292
+        case .sent: return 146
         }
     }
 }

@@ -9,7 +9,8 @@ import SwiftUI
 @MainActor
 enum Snapshotter {
     static let names = ["idle", "working", "attention", "progress", "progress-done", "request-low", "request-review",
-                        "request-high", "toast-done", "toast-allowed", "toast-denied"]
+                        "request-high", "toast-done", "toast-allowed", "toast-denied",
+                        "composer-draft", "composer-polished", "composer-error", "composer-sent"]
 
     static func run(directory: String) async -> Bool {
         let dir = URL(fileURLWithPath: directory, isDirectory: true)
@@ -57,6 +58,23 @@ enum Snapshotter {
         // Progress for the finished CI session: the green Finished card.
         store.selectedSessionID = DemoScript.ci.id
         shoot("progress-done", .progress)
+
+        // The prompt composer, in fixed states (no polish call, no send).
+        let composer = model.composer
+        let rough = "fix the flaky login test, its the session refresh timing i think"
+        let polished = "Fix the flaky login test in src/auth. The likely cause is session refresh timing, so start with "
+            + "refreshSession in src/auth/session.ts and the expiry check. Keep the change small.\nRun tests after edits."
+        composer.showForSnapshot(phase: .draft, sessionID: DemoScript.auth.id, raw: rough)
+        shoot("composer-draft", .composer(composer.layout))
+        composer.showForSnapshot(phase: .polished, sessionID: DemoScript.auth.id, raw: rough, polished: polished)
+        shoot("composer-polished", .composer(composer.layout))
+        composer.showForSnapshot(phase: .draft, sessionID: DemoScript.auth.id, raw: rough, error: PolishError.noKey.userMessage)
+        shoot("composer-error", .composer(composer.layout))
+        composer.showForSnapshot(phase: .sent, sessionID: DemoScript.auth.id, raw: "",
+                                 chips: ["Learned: Add: “Run tests after edits”", "Learned: Don't say “please”."],
+                                 sentLabel: "Sent to acme-web")
+        shoot("composer-sent", .composer(composer.layout))
+        composer.discard()
 
         Log.info("snapshot: wrote \(written.count) PNGs to \(dir.path)\(failed.isEmpty ? "" : "; failed: \(failed.joined(separator: ", "))")")
         return failed.isEmpty && Set(written) == Set(names)
