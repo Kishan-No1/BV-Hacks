@@ -89,7 +89,7 @@ enum ComposerLayout: String, Equatable {
         switch self {
         case .draft: return 232
         case .polished: return 292
-        case .sent: return 146
+        case .sent: return 160
         }
     }
 }

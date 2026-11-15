@@ -5,7 +5,7 @@
 #   SCRATCH=.build/x scripts/bundle.sh
 #
 # Idempotent: the old bundle is removed first. Copies hooks/nod-hook.sh and
-# scripts/{install-hooks.sh,uninstall-hooks.sh} into Contents/Resources when they exist.
+# scripts/{install-hooks.sh,uninstall-hooks.sh,nod-claude} into Contents/Resources when they exist.
 # OWNER: workstream C (app-ui).
 set -euo pipefail
 
@@ -72,6 +72,7 @@ copy_resource() {
 copy_resource hooks/nod-hook.sh hooks/nod-hook.sh
 copy_resource scripts/install-hooks.sh scripts/install-hooks.sh
 copy_resource scripts/uninstall-hooks.sh scripts/uninstall-hooks.sh
+copy_resource scripts/nod-claude scripts/nod-claude
 
 codesign --force --sign - "$APP" >&2
 echo "$APP"

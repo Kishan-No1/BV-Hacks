@@ -197,15 +197,33 @@ private func kept(_ n: Int, _ lead: String) -> StyleOutcome {
 // MARK: - Length and format
 
 @Suite struct StyleProfileLengthAndFormatTests {
-    /// 18 polished words cut down to 8.
+    /// 19 polished words cut down to 8. The lines that go are different every time, so no "Leave out" note
+    /// takes the credit.
     private func cut(_ n: Int, _ topic: String) -> StyleOutcome {
-        outcome(n, polished: "Fix the \(topic) bug in the auth module. Cover the change with unit tests. Note it in the changelog.",
+        outcome(n, polished: "Fix the \(topic) bug in the auth module. Cover the \(topic) change with unit tests. Note \(topic) in the changelog.",
                 final: "Fix the \(topic) bug in the auth module.")
     }
-    /// 8 polished words expanded to 14.
+    /// 8 polished words rewritten as 19.
     private func expanded(_ n: Int, _ topic: String) -> StyleOutcome {
         outcome(n, polished: "Fix the \(topic) bug in the auth module.",
-                final: "Fix the \(topic) bug in the auth module. Cover \(topic) with unit tests too.")
+                final: "Fix the \(topic) bug in the auth module and also cover every \(topic) edge case with new unit tests.")
+    }
+
+    @Test func aStandingLineTheUserAddsOrRemovesSaysNothingAboutLength() {
+        // One short constraint added to every polish: an "Add:" note, not "give more detail".
+        let adds = (1...3).map { outcome($0, polished: "Fix the area\($0) bug in the auth module now.",
+                                         final: "Fix the area\($0) bug in the auth module now. run tests after edits") }
+        var r = run(adds)
+        #expect(note(r.profile, addKey)?.count == 3)
+        #expect(!r.profile.notes.contains { $0.key.hasPrefix("length.") })
+        // The same closing line removed every time: a "Leave out" note, not "keep prompts short".
+        let removes = (1...3).map { outcome($0, polished: "Fix the area\($0) bug in the auth module now. Let me know if you have questions.",
+                                            final: "Fix the area\($0) bug in the auth module now.") }
+        r = run(removes)
+        #expect(note(r.profile, "omit:let me know if you have questions")?.active == true)
+        #expect(note(r.profile, "length.shorter")?.active != true)
+        // And the standing line is not the user's preferred verb.
+        #expect(run(adds).profile.verbCounts == ["fix": 3])
     }
 
     @Test func shorterNeedsTwoOutcomes() throws {

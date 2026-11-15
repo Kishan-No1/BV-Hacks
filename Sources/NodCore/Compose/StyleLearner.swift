@@ -181,11 +181,15 @@ public enum StyleLearner {
 
         if let polishedText {
             let polished = parse(polishedText)
-            learnLength(&state, polishedWords: tokens(polishedText).count, finalWords: finalTokens.count)
             learnFormat(&state, polishedBulleted: isBulleted(polishedText), finalBulleted: isBulleted(outcome.final))
             learnEdits(&state, polished: polished, final: final)
             learnAddedLines(&state, polished: polished, final: final)
             judgeExistingNotes(&state, polished: polished, final: final, finalTokens: finalTokens)
+            // Length is judged on what is left once the standing lines are set aside: a line the user always
+            // adds or always removes has its own note and says nothing about how long they like a prompt.
+            learnLength(&state,
+                        polishedWords: polished.filter { !state.matchesNote("omit:", $0) }.reduce(0) { $0 + $1.tokens.count },
+                        finalWords: final.filter { !state.matchesNote("add:", $0) }.reduce(0) { $0 + $1.tokens.count })
         } else {
             judgeExistingNotes(&state, polished: nil, final: final, finalTokens: finalTokens)
         }
@@ -201,7 +205,7 @@ public enum StyleLearner {
         return state.finish()
     }
 
-    /// Rule 1. The user cut the polish down, or expanded it.
+    /// Rule 1. The user cut the polish down, or expanded it (standing lines not counted).
     private static func learnLength(_ state: inout State, polishedWords: Int, finalWords: Int) {
         guard polishedWords >= minWordsForLength else { return }
         let ratio = Double(finalWords) / Double(polishedWords)
@@ -299,7 +303,8 @@ public enum StyleLearner {
     /// Rule 7. Which verbs open the user's sent lines.
     private static func learnVerbs(_ state: inout State, final: [Segment]) {
         var counted = Set<String>()
-        for f in final {
+        // A standing line ("run tests after edits") is not the verb of the task.
+        for f in final where !state.matchesNote("add:", f) {
             guard let verb = leadingWord(f.tokens), verbs.contains(verb) else { continue }
             state.profile.verbCounts[verb, default: 0] += 1
             counted.insert(verb)
@@ -334,6 +339,11 @@ public enum StyleLearner {
         }
 
         func isActive(_ key: String) -> Bool { notes[key]?.active ?? false }
+
+        /// true when a note of this kind ("add:", "omit:") is about this line.
+        func matchesNote(_ prefix: String, _ segment: Segment) -> Bool {
+            notes.keys.contains { key in key.strip(prefix: prefix).map { StyleLearner.matches($0, segment) } ?? false }
+        }
 
         /// One piece of evidence for a note. At most one per key and outcome. `text` is only used for a new note.
         mutating func bump(_ key: String, text: String, threshold: Int) {
