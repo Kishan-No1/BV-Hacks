@@ -1,0 +1,386 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nod prototype</title><style>body{background:#1d1d1f;color:#f5f5f7;font-family:system-ui,-apple-system,sans-serif;padding:24px;margin:0}.subtitle{color:rgba(245,245,247,.7)}</style></head><body>
+<style>
+  .nd { --orange:#D97757; --orange2:#E8916E; --green:#30D158; --amber:#FFB340; --red:#FF453A; --ink:#fff; --ink2:rgba(255,255,255,.55); --ink3:rgba(255,255,255,.32); --card:rgba(255,255,255,.055); }
+  .nd { max-width: 1120px; margin: 0 auto; }
+  .nd-controls { display:flex; flex-wrap:wrap; gap:8px; margin: 14px 0 10px; align-items:center; }
+  .nd-controls button { font: 500 13px/1 system-ui, -apple-system, sans-serif; padding: 8px 12px; border-radius: 999px; border:1px solid var(--border, #d2d2d7); background: var(--bg-secondary, #fff); color: inherit; cursor:pointer; }
+  .nd-controls button[aria-pressed="true"] { background: rgba(217,119,87,.16); border-color: #D97757; }
+  .nd-controls .sep { width:1px; height:22px; background: var(--border, #d2d2d7); margin: 0 4px; }
+  .nd-controls .play { background: var(--orange) !important; color:#fff !important; border-color: var(--orange) !important; }
+  .nd-controls .right { margin-left:auto; }
+
+  /* ---------- a real-proportion MacBook Pro 14" screen (1512 x 982 pt), scaled to fit ---------- */
+  .stage { position:relative; overflow:hidden; border-radius: 16px; box-shadow: 0 0 0 10px #0b0b0c, 0 0 0 11px #2a2a2a, 0 30px 60px rgba(0,0,0,.35); margin: 12px 11px 26px; }
+  .stage.actual { overflow-x:auto; }
+  .screen { position:relative; width:1512px; height:640px; transform-origin: 0 0; overflow:hidden;
+    background: radial-gradient(1400px 700px at 10% 120%, #ff7a45 0%, transparent 55%), radial-gradient(1200px 700px at 92% 125%, #7b3fe4 0%, transparent 60%), linear-gradient(180deg, #1a1e3a 0%, #2b2357 55%, #4a2a5e 100%); }
+  .menubar { position:absolute; inset:0 0 auto 0; height:37px; display:flex; align-items:center; justify-content:space-between; padding: 0 20px; color:#fff; font: 500 13.5px/1 system-ui, -apple-system, sans-serif; background: rgba(20,20,35,.32); backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%); }
+  .menubar .l, .menubar .r { display:flex; gap: 20px; align-items:center; }
+  .menubar .l b { font-weight:700; } .menubar .dim { opacity:.9; font-weight:400; }
+  .win { position:absolute; left: 330px; right: 40px; top: 52px; bottom: -20px; border-radius: 12px; background: rgba(26,26,32,.96); box-shadow: 0 20px 50px rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.07); overflow:hidden; }
+  .win .bar { height: 38px; display:flex; align-items:center; gap:8px; padding: 0 14px; border-bottom:1px solid rgba(255,255,255,.06); }
+  .win .bar i { width:12px; height:12px; border-radius:50%; display:block; }
+  .win .bar .t { margin-left: 12px; color: rgba(255,255,255,.45); font: 12.5px system-ui; }
+  .win pre { margin:0; padding: 16px 24px; color: rgba(255,255,255,.62); font: 15px/1.75 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre; }
+  .win pre .kw { color:#c792ea } .win pre .s { color:#c3e88d } .win pre .c { color: rgba(255,255,255,.3) } .win pre .f { color:#82aaff } .win pre .n { color:#f78c6c }
+  .side { position:absolute; left: 40px; top: 52px; width: 270px; bottom: -20px; border-radius: 12px; background: rgba(30,30,38,.9); border:1px solid rgba(255,255,255,.06); padding: 18px 16px; color: rgba(255,255,255,.7); font: 14px/2.2 system-ui; }
+  .side b { color:#fff; font-weight:600; }
+
+  /* ---------- island ---------- */
+  .hw-notch { position:absolute; top:0; left:50%; width:185px; height:32px; transform:translateX(-50%); background:#000; border-radius: 0 0 10px 10px; z-index: 3; }
+  .island { position:absolute; top:0; left:50%; transform:translateX(-50%); width:185px; height:32px; color: var(--ink); z-index: 4; overflow: hidden;
+    border-radius: 0 0 var(--r, 10px) var(--r, 10px); font: 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, sans-serif; -webkit-font-smoothing: antialiased; }
+  .island .bgs { position:absolute; inset:0; background:#000; z-index:0; transition: background .3s ease; }
+  /* expanded: solid black where it meets the notch, opening into liquid glass at the bottom edge */
+  .island.expanded .bgs { background: linear-gradient(180deg, #000 0%, #000 calc(100% - 78px), rgba(0,0,0,.7) calc(100% - 36px), rgba(0,0,0,.38) 100%); }
+  .island .ic { z-index: 2; }
+  .glass { position:absolute; left:0; right:0; bottom:0; height: 74px; z-index: 3; pointer-events:none; opacity:0; transition: opacity .3s ease;
+    border-radius: 0 0 var(--r, 10px) var(--r, 10px);
+    -webkit-backdrop-filter: blur(3px) saturate(1.9) brightness(1.15); backdrop-filter: url(#lg) blur(1.6px) saturate(1.9) brightness(1.15);
+    background: linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.035) 60%, rgba(255,255,255,.07) 100%);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 55%); mask-image: linear-gradient(180deg, transparent 0%, #000 55%);
+    box-shadow: inset 0 -1.5px 0 rgba(255,255,255,.30), inset 0 -14px 18px -14px rgba(255,255,255,.22), inset 1.5px 0 0 rgba(255,255,255,.10), inset -1.5px 0 0 rgba(255,255,255,.10); }
+  .island.expanded .glass { opacity:1; }
+  .island.glass-under .glass { z-index: 1; }   /* approvals: buttons float above the glass */
+  .island.risk-high .glass { background: radial-gradient(90% 160% at 50% 135%, rgba(255,69,58,.42), rgba(255,69,58,0) 70%), linear-gradient(180deg, rgba(255,255,255,0), rgba(255,255,255,.05)); }
+  .island.risk-med .glass { background: radial-gradient(90% 160% at 50% 135%, rgba(255,179,64,.28), rgba(255,179,64,0) 70%), linear-gradient(180deg, rgba(255,255,255,0), rgba(255,255,255,.05)); }
+  /* glow: no outline, just a soft fade that continues the tint coming through the glass */
+  .island.expanded { box-shadow: 0 22px 50px -18px rgba(0,0,0,.6); }
+  .island.risk-high { box-shadow: 0 30px 70px -22px rgba(255,69,58,.75), 0 12px 40px -14px rgba(255,69,58,.45); }
+  .island.risk-med  { box-shadow: 0 30px 70px -24px rgba(255,179,64,.5), 0 12px 36px -16px rgba(255,179,64,.3); }
+  .shoulder { position:absolute; top:0; width:10px; height:10px; z-index:4; pointer-events:none; }
+  .shoulder.l { background: radial-gradient(circle at 0 100%, transparent 9.5px, #000 10px); }
+  .shoulder.r { background: radial-gradient(circle at 100% 100%, transparent 9.5px, #000 10px); }
+
+  .ic { position:absolute; top:0; left:50%; transform-origin: 50% 0; opacity:1; filter: blur(0); transform: scale(1);
+    transition: opacity .22s ease .05s, filter .22s ease .05s, transform .5s cubic-bezier(.2,.9,.25,1) .02s; }
+  .ic.out { opacity:0; filter: blur(5px); transform: scale(.94); transition: opacity .1s ease, filter .1s ease, transform .1s ease; }
+
+  /* compact */
+  .ears { height:32px; display:flex; align-items:center; justify-content:space-between; padding: 0 13px 0 14px; white-space:nowrap; }
+  .ear { display:flex; align-items:center; gap:6px; font-weight: 600; font-size: 12.5px; letter-spacing: -0.01em; }
+  .ear .muted { color: var(--ink2); font-weight: 500; }
+  .clawd { display:block; color: var(--orange); flex: 0 0 auto; }
+  .wave { display:flex; gap:2.5px; align-items:center; height: 13px; }
+  .wave i { display:block; width:3px; height:4px; border-radius:2px; background: var(--orange); animation: wave 1s cubic-bezier(.45,0,.55,1) infinite; }
+  .wave i:nth-child(1){ animation-delay: -.15s } .wave i:nth-child(2){ animation-delay: -.55s } .wave i:nth-child(3){ animation-delay: -.3s } .wave i:nth-child(4){ animation-delay: -.75s }
+  @keyframes wave { 0%,100% { height:4px } 50% { height:13px } }
+  .badge-dot { position:relative; } .badge-dot::after { content:""; position:absolute; right:-3px; top:-3px; width:6px; height:6px; border-radius:50%; background: var(--amber); box-shadow: 0 0 0 1.5px #000; }
+  .pulse { animation: pulse 1.3s ease-in-out infinite; } @keyframes pulse { 50% { opacity:.35; } }
+  .ok { width:15px; height:15px; color: var(--green); }
+
+  /* expanded shell */
+  .xp { padding: 44px 24px 18px; }
+  .top { display:flex; align-items:center; justify-content:space-between; height: 30px; }
+  .lbl { display:flex; align-items:center; gap:9px; color: var(--ink2); font-weight:600; font-size: 14.5px; letter-spacing: -0.01em; }
+  .lbl svg { width:17px; height:17px; }
+  .rt { display:flex; align-items:center; gap: 16px; }
+  .avs { display:flex; gap:5px; }
+  .glassy { box-shadow: inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 .5px rgba(255,255,255,.10), 0 4px 10px -4px rgba(0,0,0,.8); }
+  .av { width:28px; height:28px; border-radius:50%; background: linear-gradient(180deg, #2a2a2e, #18181b); display:grid; place-items:center; position:relative; border:0; padding:0; cursor:pointer; transition: transform .12s ease-out, box-shadow .2s ease; }
+  .av:active { transform: scale(.92); }
+  .av.on { background: linear-gradient(180deg, #3a2620, #23160f); box-shadow: 0 0 0 1.5px rgba(217,119,87,.8), inset 0 1px 0 rgba(255,255,255,.14); }
+  .av[data-st]::after { content:""; position:absolute; right:-1px; top:-1px; width:7px; height:7px; border-radius:50%; box-shadow: 0 0 0 2px #000; }
+  .av[data-st="work"]::after { background: var(--orange); } .av[data-st="need"]::after { background: var(--amber); } .av[data-st="done"]::after { background: var(--green); }
+  .tabs { display:flex; gap:7px; }
+  .tab { width:30px; height:30px; border-radius:50%; display:grid; place-items:center; background: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.07)); color: rgba(255,255,255,.78); border:0; cursor:pointer; }
+  .tab svg { width:16px; height:16px; }
+  .tab.on { background: linear-gradient(180deg, rgba(48,209,88,.34), rgba(48,209,88,.16)); color: var(--green); }
+  .who { display:flex; align-items:center; gap: 10px; white-space: nowrap; min-width:0; }
+  .who .nm { font-weight: 700; font-size: 18px; letter-spacing: -0.022em; }
+  .who .sep { width:6px; height:6px; border-radius:50%; background: var(--orange); flex: 0 0 auto; }
+  .who .pr { color: var(--orange2); font-weight: 600; font-size: 14.5px; letter-spacing: -0.012em; overflow:hidden; text-overflow: ellipsis; }
+  .xp > .who { margin: 10px 0 8px; }
+
+  /* progress */
+  .pg { display:grid; grid-template-columns: 1fr 214px; gap: 18px; align-items:start; }
+  .steps { list-style:none; margin:0; padding:0; display:grid; gap: 0; }
+  .steps li { display:flex; align-items:center; gap: 12px; height: 25px; font-weight: 600; font-size: 14px; letter-spacing: -0.012em; color: rgba(255,255,255,.93); white-space:nowrap; animation: rise .45s cubic-bezier(.2,.9,.25,1) both; }
+  .steps li svg { width:14px; height:14px; color: var(--orange); flex: 0 0 14px; }
+  .steps li.now { color: rgba(255,255,255,.55); }
+  .steps code { font: 600 12.5px ui-monospace, "SF Mono", Menlo, monospace; }
+  @keyframes rise { from { opacity:0; transform: translateY(4px); } }
+  .card { background: var(--card); border-radius: 16px; box-shadow: inset 0 1px 0 rgba(255,255,255,.09), inset 0 0 0 .5px rgba(255,255,255,.10); }
+  .tool { padding: 12px 14px 14px; margin-top: 6px; }
+  .tool .p { display:flex; align-items:center; gap: 8px; color: var(--orange2); font: 700 12.5px ui-monospace, "SF Mono", Menlo, monospace; white-space:nowrap; overflow:hidden; text-overflow: ellipsis; }
+  .tool .p svg { width:13px; height:13px; flex:0 0 13px; }
+  .tool .t { color: var(--ink2); font-weight: 600; font-size: 13px; margin: 6px 0 10px; font-variant-numeric: tabular-nums; }
+  .bar2 { height: 4px; border-radius: 4px; background: rgba(217,119,87,.18); overflow:hidden; }
+  .bar2 i { display:block; height:100%; width: 22%; border-radius: 4px; background: var(--orange); transition: width .5s linear; }
+  .tool.fin .p { color: var(--green); font-family: system-ui; } .tool.fin .bar2 { background: rgba(48,209,88,.18); } .tool.fin .bar2 i { width:100%; background: var(--green); }
+
+  /* request */
+  .rq-top { display:flex; align-items:center; justify-content:space-between; height: 30px; gap: 12px; }
+  .ask { display:flex; align-items:center; justify-content:space-between; gap: 10px; margin: 12px 0 9px; }
+  .ask b { font-size: 16.5px; font-weight: 700; letter-spacing: -0.02em; white-space:nowrap; }
+  .cmd { padding: 9px 12px; font: 600 12.5px/1.45 ui-monospace, "SF Mono", Menlo, monospace; color: rgba(255,255,255,.9); display:flex; justify-content:space-between; gap:12px; white-space:nowrap; }
+  .cmd .d { color: var(--ink3); margin-right: 7px; }
+  .cmd .why { font: 500 12px system-ui; color: var(--ink2); }
+  .pill { display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size: 11.5px; padding: 4px 9px 4px 8px; border-radius: 999px; white-space:nowrap; }
+  .pill::before { content:""; width:6px; height:6px; border-radius:50%; background: currentColor; }
+  .pill.low { color: var(--green); background: rgba(48,209,88,.14); } .pill.med { color: var(--amber); background: rgba(255,179,64,.14); } .pill.high { color: var(--red); background: rgba(255,69,58,.17); }
+  .chips { display:flex; gap:6px; margin-top: 8px; flex-wrap: nowrap; }
+  .chip { font: 600 11.5px system-ui; color: #ffb3ad; background: rgba(255,69,58,.10); padding: 4px 9px; border-radius: 999px; white-space:nowrap; box-shadow: inset 0 0 0 .5px rgba(255,69,58,.25); }
+  .diff { overflow:hidden; font: 600 12px/1.6 ui-monospace, "SF Mono", Menlo, monospace; }
+  .diff .fh { display:flex; justify-content:space-between; padding: 6px 12px; color: var(--ink2); font: 600 12px system-ui; }
+  .diff .fh b { color: var(--orange2); font: 700 12px ui-monospace, "SF Mono", Menlo, monospace; }
+  .diff .ln { padding: 0 12px; white-space:pre; overflow:hidden; text-overflow:ellipsis; }
+  .diff .ln:last-child { padding-bottom: 5px; }
+  .diff .add { color: #8be3a4; background: rgba(48,209,88,.09); } .diff .del { color: #ffa29b; background: rgba(255,69,58,.09); }
+
+  /* liquid-glass buttons */
+  .acts { display:flex; gap:8px; margin-top: 12px; }
+  .btn { flex:1; height: 34px; border-radius: 17px; border:0; display:flex; align-items:center; justify-content:center; gap:7px; font: 600 13.5px system-ui, -apple-system, sans-serif; letter-spacing:-0.01em; color:#fff; cursor:pointer; position:relative; overflow:hidden; user-select:none; isolation: isolate;
+    background: linear-gradient(180deg, rgba(255,255,255,.17) 0%, rgba(255,255,255,.07) 55%, rgba(255,255,255,.10) 100%);
+    backdrop-filter: blur(14px) saturate(1.8); -webkit-backdrop-filter: blur(14px) saturate(1.8);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.30), inset 0 -1px 0 rgba(255,255,255,.07), inset 0 0 0 .5px rgba(255,255,255,.16), inset 0 -8px 14px -10px rgba(255,255,255,.18), 0 8px 18px -8px rgba(0,0,0,.9);
+    transition: transform .12s ease-out, filter .15s ease; }
+  .btn::before { content:""; position:absolute; inset: 1px 8% auto; height: 46%; border-radius: 16px 16px 40% 40% / 16px 16px 12px 12px; background: linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0)); z-index:-1; pointer-events:none; }
+  .btn:hover { filter: brightness(1.12); } .btn:active { transform: scale(.965); }
+  .btn.pri { color:#000; background: linear-gradient(180deg, #ffffff 0%, #f1f1f4 55%, #dcdce2 100%);
+    box-shadow: inset 0 1px 0 #fff, inset 0 -2px 3px rgba(0,0,0,.10), inset 0 0 0 .5px rgba(255,255,255,.9), 0 8px 20px -8px rgba(255,255,255,.35), 0 2px 6px -2px rgba(0,0,0,.6); }
+  .btn.pri::before { background: linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,255,255,0)); }
+  .btn.red { background: linear-gradient(180deg, #ff6a60 0%, #ff453a 55%, #e2382e 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.45), inset 0 -2px 4px rgba(0,0,0,.16), inset 0 0 0 .5px rgba(255,255,255,.25), 0 10px 24px -10px rgba(255,69,58,.9); }
+  .btn.ghost { font-weight: 500; color: rgba(255,255,255,.82); background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03)); }
+  .btn.wide { flex: 1.45; }
+  .btn code { font: 600 12px ui-monospace, "SF Mono", Menlo, monospace; }
+  .kb { font: 600 10.5px/1 system-ui; padding: 3px 5px; border-radius: 5px; background: rgba(0,0,0,.08); opacity:.6; }
+  .btn:not(.pri) .kb { background: rgba(255,255,255,.14); }
+  .btn .fill { position:absolute; inset:0; width:0; background: linear-gradient(180deg, rgba(255,106,96,.85), rgba(226,56,46,.85)); z-index:-1; }
+
+  .caption { text-align:center; font-size: 13px; opacity:.7; margin: -10px 0 0; min-height: 18px; }
+  @media (prefers-reduced-motion: reduce) {
+    .island, .shoulder { transition: none !important; }
+    .ic, .ic.out { transform:none !important; filter:none !important; }
+    .wave i, .pulse, .steps li { animation: none !important; opacity:1; transform:none; }
+  }
+</style>
+
+<!-- liquid-glass refraction: a soft displacement of whatever sits behind the glass -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="lg" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.004 0.03" numOctaves="2" seed="11" result="noise"/>
+    <feGaussianBlur in="noise" stdDeviation="2.5" result="soft"/>
+    <feDisplacementMap in="SourceGraphic" in2="soft" scale="26" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+
+<div class="nd">
+  <h2>Nod v3: smaller, with liquid glass</h2>
+  <p class="subtitle">The mock screen is now a 14" MacBook Pro at true proportions, scaled to fit your browser, so the island's size compares directly with your screenshot. Use <b>1:1 size</b> to see it at real pixel size. Hover the notch while it's <b>Working</b> to open Progress.</p>
+
+  <div class="nd-controls" id="ctl">
+    <button class="play" id="play">▶ Play the story</button>
+    <span class="sep"></span>
+    <button data-s="idle">Idle</button>
+    <button data-s="working">Working</button>
+    <button data-s="progress">Hover: Progress</button>
+    <button data-s="low">Needs you · low risk</button>
+    <button data-s="med">Needs you · code edit</button>
+    <button data-s="high">Needs you · high risk</button>
+    <button data-s="done">Finished</button>
+    <button class="right" id="zoom">1:1 size</button>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="screen" id="screen">
+      <div class="menubar">
+        <div class="l"><b></b><b>Code</b><span class="dim">File</span><span class="dim">Edit</span><span class="dim">Selection</span><span class="dim">View</span><span class="dim">Go</span><span class="dim">Run</span><span class="dim">Terminal</span></div>
+        <div class="r"><span class="dim">100%</span><span class="dim">Sat Nov 15</span><span class="dim">2:41 PM</span></div>
+      </div>
+      <div class="side"><b>BV-Hacks</b><br>▸ src<br>&nbsp;&nbsp;▾ auth<br>&nbsp;&nbsp;&nbsp;&nbsp;session.ts<br>&nbsp;&nbsp;&nbsp;&nbsp;refresh.ts<br>&nbsp;&nbsp;▸ app<br>▸ tests<br>package.json</div>
+      <div class="win">
+        <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="t">session.ts — BV-Hacks</span></div>
+<pre><span class="c">// you stay in your editor. the agents work in the background.</span>
+<span class="kw">import</span> { SessionError } <span class="kw">from</span> <span class="s">'./errors'</span>;
+
+<span class="kw">export async function</span> <span class="f">refreshSession</span>(token: <span class="kw">string</span>) {
+  <span class="kw">const</span> res = <span class="kw">await</span> fetch(<span class="s">'/api/session'</span>, {
+    method: <span class="s">'POST'</span>,
+    headers: { Authorization: <span class="s">`Bearer ${token}`</span> },
+  });
+  <span class="kw">if</span> (!res.ok) <span class="kw">throw new</span> <span class="f">SessionError</span>(res.status);
+  <span class="kw">return</span> res.json();
+}
+
+<span class="kw">export function</span> <span class="f">isExpired</span>(exp: <span class="kw">number</span>) {
+  <span class="kw">return</span> Date.now() &gt; exp * <span class="n">1000</span> - <span class="n">30_000</span>;
+}</pre>
+      </div>
+      <div class="hw-notch"></div>
+      <div class="shoulder l" id="shL"></div>
+      <div class="shoulder r" id="shR"></div>
+      <div class="island" id="island"><div class="bgs"></div><div class="ic" id="ic"></div><div class="glass"></div></div>
+    </div>
+  </div>
+  <p class="caption" id="caption"></p>
+</div>
+
+<script>
+(() => {
+  const clawd = (w = 20) => `<svg class="clawd" width="${w}" height="${Math.round(w * 13 / 18)}" viewBox="0 0 18 13" fill="currentColor" shape-rendering="crispEdges" aria-label="Claude Code"><rect x="3" y="0" width="12" height="2.5"/><rect x="3" y="2.5" width="2" height="2.5"/><rect x="6" y="2.5" width="6" height="2.5"/><rect x="13" y="2.5" width="2" height="2.5"/><rect x="1" y="5" width="16" height="2.5"/><rect x="3" y="7.5" width="12" height="2.5"/><rect x="4" y="10" width="1" height="3"/><rect x="6" y="10" width="1" height="3"/><rect x="11" y="10" width="1" height="3"/><rect x="13" y="10" width="1" height="3"/></svg>`;
+  const I = {
+    list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="6" height="6" rx="1.6"/><path d="M4.6 7l1.1 1.1L7.6 6"/><circle cx="6" cy="17" r="3"/><path d="M13 7h8M13 17h8"/></svg>',
+    shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.3-7.5 9.5-4.3-1.2-7.5-4.9-7.5-9.5V6L12 3z"/><path d="M9 12l2 2 4-4"/></svg>',
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5L19.5 6.5"/></svg>',
+    play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.8v14.4c0 .8.9 1.3 1.6.8l11-7.2c.6-.4.6-1.2 0-1.6l-11-7.2C7.9 3.5 7 4 7 4.8z"/></svg>',
+    doc: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 2h8l6 6v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2zm7 1.5V9h5.5L13 3.5zM8 13h8v1.6H8V13zm0 4h8v1.6H8V17z"/></svg>',
+  };
+  const ok = `<svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5L19.5 6.5"/></svg>`;
+
+  const SESS = [
+    { prompt:'add token refresh to auth', st:'work',
+      steps:['Read <code>src/auth/session.ts</code>', 'Searched “SessionError” in 6 files', 'Ran <code>npm test -- src/auth</code>', 'Planned a retry on 401'], now:'Editing session.ts',
+      tool:{ path:'src/auth/session.ts', t:12.5 } },
+    { prompt:'rewrite the hero copy for launch', st:'work',
+      steps:['Read <code>app/page.tsx</code>', 'Read <code>docs/brand-voice.md</code>', 'Drafted 3 headline options', 'Picked the shortest one'], now:'Updating the hero section',
+      tool:{ path:'app/page.tsx', t:4.2 } },
+    { prompt:'fix the flaky CI cache', st:'done',
+      steps:['Read <code>.github/workflows/ci.yml</code>', 'Keyed the cache to the lockfile', 'Ran the workflow locally', 'All checks green'], now:null, tool:null },
+  ];
+  let active = 0;
+
+  const avatars = (ring, over) => `<div class="avs">${SESS.map((s, i) => `<button class="av glassy${i === ring ? ' on' : ''}" data-av="${i}" data-st="${(over && over[i]) || s.st}" title="${s.prompt}">${clawd(15)}</button>`).join('')}</div>`;
+  const who = (s, big = 24) => `<div class="who">${clawd(big)}<span class="nm">Claude</span><span class="sep"></span><span class="pr">${s.prompt}</span></div>`;
+
+  function progressHTML() {
+    const s = SESS[active];
+    const steps = s.steps.map((x, i) => `<li style="animation-delay:${60 + i * 45}ms">${I.check}<span>${x}</span></li>`).join('') +
+      (s.now ? `<li class="now" style="animation-delay:${60 + s.steps.length * 45}ms">${I.play}<span>${s.now}</span></li>` : '');
+    const card = s.tool
+      ? `<div class="card tool"><div class="p">${I.doc}<span>${s.tool.path}</span></div><div class="t" id="secs">${s.tool.t.toFixed(2)} seconds</div><div class="bar2"><i id="pbar"></i></div></div>`
+      : `<div class="card tool fin"><div class="p">${ok}<span>Finished</span></div><div class="t">3 files changed · 9m 12s</div><div class="bar2"><i></i></div></div>`;
+    return `<div class="xp"><div class="top"><div class="lbl">${I.list}Progress</div><div class="rt">${avatars(active)}<div class="tabs"><button class="tab glassy on" title="Progress">${I.list}</button><button class="tab glassy" title="Rules">${I.shield}</button></div></div></div>${who(s)}<div class="pg"><ul class="steps">${steps}</ul>${card}</div></div>`;
+  }
+
+  const req = (o) => `<div class="xp"><div class="rq-top">${who(SESS[o.ring], 22)}${avatars(o.ring, o.over)}</div><div class="ask"><b>${o.ask}</b>${o.pill}</div>${o.body}${o.acts}</div>`;
+
+  const S = {
+    idle: { w:185, h:32, r:10, cap:'Idle: nothing running. It looks like a normal notch.', html: () => '' },
+    working: { w:272, h:32, r:10, cap:'Working: Claude Code logo on the left, the wave on the right. Hover the notch to see progress.',
+      html: () => `<div class="ears"><div class="ear">${clawd(19)}</div><div class="ear"><div class="wave"><i></i><i></i><i></i><i></i></div></div></div>` },
+    attention: { w:272, h:32, r:10, cap:'',
+      html: () => `<div class="ears"><div class="ear"><span class="badge-dot">${clawd(19)}</span></div><div class="ear"><span class="pulse" style="color:var(--amber);font-size:11px">●</span></div></div>` },
+    progress: { w:600, h:256, r:34, expanded:true, glassOver:true, cap:'Progress: the step list slides under the liquid-glass edge at the bottom. The current step shows a live timer.', html: progressHTML },
+    low: { w:560, r:34, expanded:true, risk:'low', cap:'Low risk: read-only and inside the repo. ⌥↵ allows it without leaving your editor.',
+      html: () => req({ ring:0, over:{0:'need'}, ask:'Run the auth test suite', pill:'<span class="pill low">Low risk</span>',
+        body:`<div class="card cmd"><span><span class="d">$</span>npm test -- src/auth</span><span class="why">read-only · inside repo</span></div>`,
+        acts:`<div class="acts"><button class="btn" data-a="deny">Deny<span class="kb">⌥⌫</span></button><button class="btn ghost wide" data-a="allow">Always allow <code>npm test</code></button><button class="btn pri" data-a="allow">Allow<span class="kb">⌥↵</span></button></div>` }) },
+    med: { w:560, r:34, expanded:true, risk:'med', cap:'Code edit: the real diff before it lands. The amber glow fades out from the glass edge.',
+      html: () => req({ ring:0, over:{0:'need'}, ask:'Edit 2 files in src/auth', pill:'<span class="pill med">Review</span>',
+        body:`<div class="card diff"><div class="fh"><b>session.ts</b><span>+12 −4 · and 1 more file</span></div><div class="ln del">-  if (!res.ok) throw new SessionError(res.status);</div><div class="ln add">+  if (res.status === 401) return refreshAndRetry(token);</div></div>`,
+        acts:`<div class="acts"><button class="btn" data-a="deny">Deny<span class="kb">⌥⌫</span></button><button class="btn ghost wide" data-a="open">Open full diff</button><button class="btn pri" data-a="allow">Allow<span class="kb">⌥↵</span></button></div>` }) },
+    high: { w:560, r:34, expanded:true, risk:'high', cap:'High risk: no outline, just a red glow fading out from the glass edge. Deny is the default and allowing takes a hold.',
+      html: () => req({ ring:1, over:{1:'need'}, ask:'Delete 14 files outside this repo', pill:'<span class="pill high">High risk</span>',
+        body:`<div class="card cmd"><span><span class="d">$</span>rm -rf ../design-assets/export/*</span></div><div class="chips"><span class="chip">Outside the project</span><span class="chip">Not in git · can’t undo</span><span class="chip">14 files · 38 MB</span></div>`,
+        acts:`<div class="acts"><button class="btn" data-a="hold"><span class="fill"></span>Hold to allow</button><button class="btn red wide" data-a="deny">Deny<span class="kb">⌥↵</span></button></div>` }) },
+    done: { w:310, h:32, r:10, cap:'Finished: a quick nod, then it tucks back in.',
+      html: () => `<div class="ears"><div class="ear">${clawd(19)}</div><div class="ear"><span class="muted">Done</span>${ok}</div></div>` },
+    allowed: { w:290, h:32, r:10, cap:'', html: () => `<div class="ears"><div class="ear">${clawd(19)}</div><div class="ear"><span class="muted">Allowed</span>${ok}</div></div>` },
+    denied: { w:290, h:32, r:10, cap:'', html: () => `<div class="ears"><div class="ear">${clawd(19)}</div><div class="ear"><span class="muted">Denied</span><span style="color:var(--red);font-weight:800;font-size:13px">✕</span></div></div>` },
+  };
+
+  function spring(z, resp) {
+    const w = 2 * Math.PI / resp, wd = w * Math.sqrt(Math.max(1e-6, 1 - z * z));
+    const f = t => z < 1 ? 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t)) : 1 - Math.exp(-w * t) * (1 + w * t);
+    let T = 0.05; while (T < 3 && !(Math.abs(1 - f(T)) < 0.0015 && Math.abs(1 - f(T + 0.06)) < 0.0015)) T += 0.01;
+    const N = 56, pts = []; for (let i = 0; i <= N; i++) pts.push(+(i === N ? 1 : f(T * i / N)).toFixed(4));
+    return { e: `linear(${pts.join(',')})`, d: +T.toFixed(3) };
+  }
+  const OPEN = spring(0.8, 0.5), CLOSE = spring(1.0, 0.38), NUDGE = spring(0.7, 0.42);
+
+  const island = document.getElementById('island'), ic = document.getElementById('ic');
+  const shL = document.getElementById('shL'), shR = document.getElementById('shR');
+  const screen = document.getElementById('screen'), stage = document.getElementById('stage'), caption = document.getElementById('caption');
+  let cur = null, curW = 185, curH = 32, swapT = null, timer = null, actual = false;
+
+  function fit() {
+    const s = actual ? 1 : Math.min(1, stage.clientWidth / 1512);
+    screen.style.transform = `scale(${s})`; stage.style.height = (640 * s) + 'px';
+  }
+  document.getElementById('zoom').onclick = (e) => { actual = !actual; stage.classList.toggle('actual', actual); e.target.textContent = actual ? 'Fit to width' : '1:1 size'; e.target.setAttribute('aria-pressed', actual); fit(); if (actual) stage.scrollLeft = (1512 - stage.clientWidth) / 2; };
+
+  function setTransition(sp) {
+    const t = (p) => `${p} ${sp.d}s ${sp.e}`;
+    island.style.transition = [t('width'), t('height'), t('border-radius'), 'box-shadow .5s ease'].join(',');
+    shL.style.transition = shR.style.transition = t('left');
+    if (/static/.test(location.hash)) island.style.transition = shL.style.transition = shR.style.transition = 'none';
+  }
+  function place(w) { shL.style.left = (1512 / 2 - w / 2 - 10) + 'px'; shR.style.left = (1512 / 2 + w / 2) + 'px'; }
+  function measure(s, html) {
+    if (s.h) return s.h;
+    const m = document.createElement('div'); m.className = 'island expanded';
+    m.style.cssText = `position:absolute;left:-9999px;top:0;transform:none;visibility:hidden;transition:none;height:auto;width:${s.w}px`;
+    m.innerHTML = `<div style="position:relative">${html}</div>`; screen.appendChild(m); const h = m.offsetHeight; m.remove(); return h;
+  }
+
+  function go(name) {
+    const s = S[name]; if (!s) return; cur = name;
+    document.querySelectorAll('#ctl button[data-s]').forEach(b => b.setAttribute('aria-pressed', b.dataset.s === name));
+    if (s.cap) caption.textContent = s.cap;
+    clearInterval(timer);
+    const html = s.html(), h = measure(s, html);
+    setTransition(s.expanded ? OPEN : (s.w * h > curW * curH ? NUDGE : CLOSE));
+    ic.classList.add('out'); clearTimeout(swapT);
+    swapT = setTimeout(() => {
+      ic.innerHTML = html; ic.style.width = s.w + 'px'; ic.style.marginLeft = (-s.w / 2) + 'px';
+      island.classList.toggle('expanded', !!s.expanded);
+      island.classList.toggle('glass-under', !!s.expanded && !s.glassOver);
+      island.classList.toggle('risk-high', s.risk === 'high');
+      island.classList.toggle('risk-med', s.risk === 'med');
+      island.style.width = s.w + 'px'; island.style.height = h + 'px'; island.style.setProperty('--r', s.r + 'px');
+      curW = s.w; curH = h; place(s.w);
+      requestAnimationFrame(() => requestAnimationFrame(() => ic.classList.remove('out')));
+      wire(); if (name === 'progress') tick();
+    }, 90);
+  }
+
+  function tick() {
+    const s = SESS[active]; if (!s.tool) return;
+    let t = s.tool.t; const secs = document.getElementById('secs'), bar = document.getElementById('pbar');
+    const upd = () => { if (secs) secs.textContent = t.toFixed(2) + ' seconds'; if (bar) bar.style.width = Math.min(92, 18 + t * 2.4) + '%'; };
+    requestAnimationFrame(upd);
+    timer = setInterval(() => { t += 0.05; s.tool.t = t; upd(); }, 50);
+  }
+  function resolve(kind) { stopPlay(); const next = cur === 'low' ? 'med' : null; go(kind); setTimeout(() => go(next || 'working'), 1100); }
+  function wire() {
+    ic.querySelectorAll('[data-av]').forEach(b => b.onclick = () => { if (cur !== 'progress') return; active = +b.dataset.av; go('progress'); });
+    ic.querySelectorAll('[data-a]').forEach(b => {
+      const a = b.dataset.a;
+      if (a === 'allow') b.onclick = () => resolve('allowed');
+      if (a === 'deny') b.onclick = () => resolve('denied');
+      if (a === 'hold') {
+        const fill = b.querySelector('.fill'); let t0 = 0, raf = 0;
+        const step = (t) => { const p = Math.min(1, (t - t0) / 900); fill.style.width = (p * 100) + '%'; if (p < 1) raf = requestAnimationFrame(step); else resolve('allowed'); };
+        b.onpointerdown = (e) => { b.setPointerCapture(e.pointerId); t0 = performance.now(); fill.style.transition = 'none'; raf = requestAnimationFrame(step); };
+        const cancel = () => { cancelAnimationFrame(raf); fill.style.transition = 'width .35s cubic-bezier(.2,.9,.25,1)'; fill.style.width = '0%'; };
+        b.onpointerup = cancel; b.onpointercancel = cancel;
+      }
+    });
+  }
+
+  document.querySelectorAll('#ctl button[data-s]').forEach(b => b.onclick = () => { stopPlay(); go(b.dataset.s); });
+  let hoverT = null;
+  island.addEventListener('mouseenter', () => { clearTimeout(hoverT); if (cur === 'working') hoverT = setTimeout(() => go('progress'), 120); });
+  island.addEventListener('mouseleave', () => { clearTimeout(hoverT); if (cur === 'progress' && !playing) hoverT = setTimeout(() => go('working'), 220); });
+  document.addEventListener('keydown', (e) => {
+    if (!e.altKey) return; const s = S[cur]; if (!s || !s.risk) return;
+    if (e.key === 'Enter') { e.preventDefault(); resolve(s.risk === 'high' ? 'denied' : 'allowed'); }
+    if (e.key === 'Backspace') { e.preventDefault(); resolve('denied'); }
+  });
+
+  const STORY = [['idle',1200],['working',2000],['progress',3600],['working',1200],['attention',1100],['low',2800],['allowed',1100],['med',3000],['allowed',1100],['working',1300],['high',3600],['denied',1300],['working',1300],['done',2200],['working',1200]];
+  let playing = false, pt = null; const playBtn = document.getElementById('play');
+  function stopPlay() { playing = false; clearTimeout(pt); playBtn.textContent = '▶ Play the story'; }
+  playBtn.onclick = () => {
+    if (playing) return stopPlay(); playing = true; playBtn.textContent = '■ Stop'; let i = 0;
+    const step = () => { if (!playing) return; const [n, d] = STORY[i]; go(n); i++; if (i < STORY.length) pt = setTimeout(step, d); else stopPlay(); };
+    step();
+  };
+  window.addEventListener('resize', fit); fit();
+  const h = (location.hash.match(/s=(\w+)/) || [])[1];
+  go(S[h] ? h : 'working');
+})();
+</script>
+</body></html>
