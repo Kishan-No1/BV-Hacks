@@ -92,15 +92,20 @@ struct IslandBackground: View {
     let expanded: Bool
     let height: CGFloat
     let radius: CGFloat
+    @Environment(\.nodRender) private var render
 
     var body: some View {
+        // Without native glass (snapshots, NOD_GLASS=0) nothing blurs what is behind the island, so the
+        // bottom edge stays nearly opaque: the desktop must not show through sharp behind the buttons.
+        let mid = render.nativeGlass ? 0.7 : 0.96
+        let bottom = render.nativeGlass ? 0.38 : 0.9
         let h = max(height, 1)
         let a = max(0, min(1, (h - 78) / h)), b = max(a, min(1, (h - 36) / h))
         let gradient = LinearGradient(stops: [
             .init(color: .black, location: 0),
             .init(color: .black, location: a),
-            .init(color: .black.opacity(expanded ? 0.7 : 1), location: b),
-            .init(color: .black.opacity(expanded ? 0.38 : 1), location: 1),
+            .init(color: .black.opacity(expanded ? mid : 1), location: b),
+            .init(color: .black.opacity(expanded ? bottom : 1), location: 1),
         ], startPoint: .top, endPoint: .bottom)
         IslandShape(radius: radius).fill(gradient)
     }

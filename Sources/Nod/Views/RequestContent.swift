@@ -190,7 +190,12 @@ struct RequestActions: View {
                 CapsuleButton(kind: .neutral, keyHint: "⌥⌫", action: { model.deny(id) }) { Text("Deny") }
                 CapsuleButton(kind: .ghost, action: { model.alwaysAllow(id) }) {
                     if suggestion.commandPrefix != nil {
-                        Text("Always allow \(Text(suggestion.label).font(Theme.mono(12, .semibold)))")
+                        // The command is ONE monospaced span (prototype `<code>`), with no proportional
+                        // tracking applied inside it, so "npm test" keeps even spacing.
+                        HStack(spacing: 5) {
+                            Text("Always allow")
+                            Text(verbatim: suggestion.label).font(Theme.mono(12, .semibold)).tracking(0)
+                        }
                     } else {
                         Text("Always allow \(suggestion.label)")
                     }

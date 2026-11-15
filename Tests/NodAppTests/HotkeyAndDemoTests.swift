@@ -221,3 +221,90 @@ struct IslandModelTests {
         model.stop()
     }
 }
+
+/// A clock the tests move by hand.
+@MainActor
+final class ManualClock {
+    var date = Date(timeIntervalSinceReferenceDate: 800_000_000)
+    func advance(_ seconds: TimeInterval) { date = date.addingTimeInterval(seconds) }
+}
+
+@Suite("Hotkeys never answer a request the user has not seen")
+@MainActor
+struct HotkeyGuardTests {
+    private func shownID(_ model: IslandModel) -> UUID? {
+        if case .request(let r) = model.displayedState { return r.id }
+        return nil
+    }
+
+    @Test func aRequestMustBeOnScreenForTheGuardInterval() async {
+        let store = SessionStore()
+        let model = IslandModel(store: store, renderMode: .snapshot(now: Date()))
+        let clock = ManualClock()
+        model.now = { clock.date }
+        model.start()
+        let task = Task { @MainActor in await store.requestDecision(for: permissionEvent(), timeout: 30) }
+        #expect(await eventually { store.pending.count == 1 && shownID(model) == store.pending[0].id })
+
+        model.hotkeyDefault()           // the key was already on its way down when the card appeared
+        model.hotkeyDeny()
+        #expect(store.pending.count == 1)
+        clock.advance(IslandModel.hotkeyGuardInterval - 0.1)
+        model.hotkeyDefault()
+        #expect(store.pending.count == 1)
+        clock.advance(0.2)
+        model.hotkeyDefault()
+        #expect(store.pending.isEmpty)
+        #expect(await task.value == .allow)
+        model.stop()
+    }
+
+    @Test func aDoubleTapDoesNotAnswerTheNextQueuedRequest() async {
+        let store = SessionStore()
+        let model = IslandModel(store: store, renderMode: .snapshot(now: Date()))
+        let clock = ManualClock()
+        model.now = { clock.date }
+        model.start()
+        let a = Task { @MainActor in await store.requestDecision(for: permissionEvent(session: "s1"), timeout: 30) }
+        #expect(await eventually { store.pending.count == 1 })
+        let b = Task { @MainActor in await store.requestDecision(for: permissionEvent(session: "s2", command: "npm run deploy"), timeout: 30) }
+        #expect(await eventually { store.pending.count == 2 && shownID(model) == store.pending[0].id })
+        let second = store.pending[1].id
+
+        clock.advance(1)
+        model.hotkeyDefault()           // first press: answers the request the user read
+        #expect(store.pending.map(\.id) == [second])
+        model.hotkeyDefault()           // second press of a double tap, before the island even switched
+        #expect(store.pending.map(\.id) == [second])
+        #expect(await eventually { shownID(model) == second })
+        model.hotkeyDefault()           // ... and right after the next card appeared
+        model.hotkeyDeny()
+        #expect(store.pending.map(\.id) == [second])
+        clock.advance(IslandModel.hotkeyGuardInterval + 0.1)
+        model.hotkeyDeny()
+        #expect(store.pending.isEmpty)
+        #expect(await a.value == .allow)
+        #expect(await b.value == .deny(message: nil))
+        model.stop()
+    }
+
+    @Test func aHotkeyRightAfterAButtonDecisionIsIgnored() async {
+        let store = SessionStore()
+        let model = IslandModel(store: store, renderMode: .snapshot(now: Date()))
+        let clock = ManualClock()
+        model.now = { clock.date }
+        model.start()
+        // The second request was already on screen long ago in wall-clock terms; only the recent decision blocks.
+        let a = Task { @MainActor in await store.requestDecision(for: permissionEvent(session: "s1"), timeout: 30) }
+        #expect(await eventually { store.pending.count == 1 && shownID(model) == store.pending[0].id })
+        clock.advance(5)
+        model.allow(store.pending[0].id)   // mouse click
+        let b = Task { @MainActor in await store.requestDecision(for: permissionEvent(session: "s2", command: "ls"), timeout: 30) }
+        #expect(await eventually { store.pending.count == 1 && shownID(model) == store.pending.first?.id })
+        model.hotkeyDefault()
+        #expect(store.pending.count == 1)
+        store.resolve(store.pending[0].id, .deny(message: nil))
+        _ = await (a.value, b.value)
+        model.stop()
+    }
+}

@@ -33,6 +33,16 @@ final class IslandModel {
     /// Measured request-card heights, keyed by request id.
     private(set) var requestHeights: [UUID: CGFloat] = [:]
 
+    /// A hotkey only acts on a request that has been on screen this long, and not sooner than this after
+    /// the previous decision: a double tap, or a key already on its way down when a card appears, must
+    /// never answer a request the user has not read.
+    static let hotkeyGuardInterval: TimeInterval = 0.5
+    /// The request card on screen and when the island first rendered it.
+    @ObservationIgnored private var shownRequest: (id: UUID, since: Date)?
+    @ObservationIgnored private var lastDecisionAt: Date?
+    /// The clock for the hotkey guard (tests replace it).
+    @ObservationIgnored var now: () -> Date = { Date() }
+
     @ObservationIgnored private var isPrerolling = false
     @ObservationIgnored var onStateChange: ((IslandState) -> Void)?
     @ObservationIgnored private var stateLoop: ObservationLoop<IslandState>?
@@ -93,6 +103,11 @@ final class IslandModel {
     func apply(_ state: IslandState, animated: Bool = true) {
         prepare(state)
         guard state != displayedState else { return }
+        if case .request(let r) = state {
+            if shownRequest?.id != r.id { shownRequest = (r.id, now()) }
+        } else {
+            shownRequest = nil
+        }
         let old = displayedState
         if state == .progress, old != .progress {
             pinnedProgressSessionID = store.selectedSessionID == nil ? store.activeSession?.id : nil
@@ -169,31 +184,65 @@ final class IslandModel {
 
     // MARK: Actions (buttons, hotkeys)
 
-    /// ⌥↵ and the primary button: allow for low/review, deny for high.
+    /// The request a hotkey may answer right now: the current one, only if it is the card on screen, has
+    /// been there for `hotkeyGuardInterval`, and no decision was made within that interval. nil otherwise.
+    func hotkeyTarget() -> PendingRequest? {
+        guard let r = store.currentRequest else { return nil }
+        guard case .request(let displayed) = displayedState, displayed.id == r.id,
+              let shown = shownRequest, shown.id == r.id else {
+            Log.debug("hotkey ignored: the request is not on screen yet")
+            return nil
+        }
+        let t = now()
+        guard t.timeIntervalSince(shown.since) >= Self.hotkeyGuardInterval else {
+            Log.debug("hotkey ignored: the request has been on screen for less than \(Self.hotkeyGuardInterval)s")
+            return nil
+        }
+        if let last = lastDecisionAt, t.timeIntervalSince(last) < Self.hotkeyGuardInterval {
+            Log.debug("hotkey ignored: a decision was made less than \(Self.hotkeyGuardInterval)s ago")
+            return nil
+        }
+        return r
+    }
+
+    /// ⌥↵: the default decision (allow for low/review, deny for high) for the request on screen.
+    func hotkeyDefault() {
+        guard let r = hotkeyTarget() else { return }
+        Log.debug("action: default (\(r.defaultDecision.isAllow ? "allow" : "deny")) for \(r.toolName)")
+        resolve(r.id, r.defaultDecision)
+    }
+
+    /// ⌥⌫: deny the request on screen.
+    func hotkeyDeny() {
+        guard let r = hotkeyTarget() else { return }
+        deny(r.id)
+    }
+
+    /// The default decision without the hotkey guard (`--test-autodecide`, which waits by itself).
     func performDefault() {
         guard let r = store.currentRequest else { return }
         Log.debug("action: default (\(r.defaultDecision.isAllow ? "allow" : "deny")) for \(r.toolName)")
-        store.resolve(r.id, r.defaultDecision)
+        resolve(r.id, r.defaultDecision)
+    }
+
+    private func resolve(_ id: UUID, _ decision: Decision, remember: Bool = false) {
+        lastDecisionAt = now()
+        store.resolve(id, decision, remember: remember)
     }
 
     func allow(_ id: UUID) {
         Log.debug("action: allow")
-        store.resolve(id, .allow)
+        resolve(id, .allow)
     }
 
     func alwaysAllow(_ id: UUID) {
         Log.debug("action: always allow")
-        store.resolve(id, .allow, remember: true)
+        resolve(id, .allow, remember: true)
     }
 
     func deny(_ id: UUID) {
         Log.debug("action: deny")
-        store.resolve(id, .deny(message: nil))
-    }
-
-    func denyCurrent() {
-        guard let r = store.currentRequest else { return }
-        deny(r.id)
+        resolve(id, .deny(message: nil))
     }
 
     func openDiff(_ request: PendingRequest) {

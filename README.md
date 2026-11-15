@@ -73,6 +73,19 @@ scripts/uninstall-hooks.sh
 | Click "Open full diff" | open the file an edit request would change |
 
 The hotkeys are registered only while a request is showing, so they do not shadow other apps the rest of the time.
+A hotkey only answers the card that is on screen, and only once it has been there for half a second (and half a
+second after the previous decision), so a double tap or a key already on its way down never answers a request you
+have not read.
+
+Safety notes:
+
+- The hook server only talks to local tools. Requests with an `Origin` header, a `Host` other than
+  `127.0.0.1` / `localhost`, or a POST that is not `application/json` are refused, so a web page cannot put fake
+  cards in the notch.
+- Always-allow rules never cover a riskier variant of the command (`sort` does not allow `sort -o file`), an
+  argument containing `=`, a write to `.git/`, `.claude/` or `.mcp.json`, or `sed` / `awk` / `rg` at all.
+- "Install Claude Code hooks…" copies `nod-hook.sh` to `~/Library/Application Support/Nod/` and registers that
+  copy, so the hooks keep working if this checkout moves.
 You can still answer in the terminal: the first answer wins and Nod drops the request.
 
 Rules live in `~/Library/Application Support/Nod/rules.json`. Delete an entry there to remove a rule.

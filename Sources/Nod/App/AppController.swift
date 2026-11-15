@@ -133,8 +133,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func handleHotkey(_ key: IslandHotkey) {
         Log.debug("hotkey: \(key == .defaultAction ? "⌥↵ (default)" : "⌥⌫ (deny)")")
         switch key {
-        case .defaultAction: model.performDefault()
-        case .deny: model.denyCurrent()
+        case .defaultAction: model.hotkeyDefault()
+        case .deny: model.hotkeyDeny()
         }
     }
 
