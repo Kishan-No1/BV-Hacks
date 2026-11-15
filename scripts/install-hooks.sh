@@ -6,7 +6,8 @@
 # For each of the nine events Nod uses it adds one matcher group without a matcher:
 #   {"hooks":[{"type":"command","command":"'<abs hook path>' <Event>","timeout":<n>}]}
 # timeout: 600 for PermissionRequest, 5 for the others, none for SessionEnd (its 1.5 s default budget).
-# Idempotent: every handler whose command contains "nod-hook.sh" is removed first, then re-added.
+# Idempotent: every handler that runs a script named exactly nod-hook.sh is removed first, then re-added
+# (an unrelated my-nod-hook.sh is left alone).
 # Unrelated keys and hooks are left alone. An existing file is backed up to
 # <file>.nod-backup-<YYYYmmdd-HHMMSS> before it is changed. Invalid JSON is refused (exit 1).
 # Contract: docs/superpowers/plans/hook-contract.md section 5.
@@ -91,7 +92,7 @@ else
 fi
 [ -f "$HOOK" ] || die "hook script not found: $HOOK"
 case "$(basename "$HOOK")" in
-  *nod-hook.sh) ;;
+  nod-hook.sh) ;;
   *) die "the hook script must be named nod-hook.sh (uninstall finds Nod's entries by that name): $HOOK" ;;
 esac
 [ -x "$HOOK" ] || echo "install-hooks: warning: $HOOK is not executable (chmod +x it)" >&2
@@ -114,7 +115,7 @@ done
 
 # shellcheck disable=SC2016 # jq program, not shell expansions
 JQ_LIB='
-def is_nod: type == "object" and ((.command | type) == "string") and (.command | contains("nod-hook.sh"));
+def is_nod: type == "object" and ((.command | type) == "string") and (.command | test("(^|[/ \"\u0027])nod-hook\\.sh[\"\u0027]?( |$)"));
 def has_nod: type == "object" and ((.hooks | type) == "array") and any(.hooks[]; is_nod);
 def count_nod:
   if type == "object" then

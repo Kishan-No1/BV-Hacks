@@ -18,6 +18,11 @@ public enum HookServerError: Error, Equatable {
 ///   `.noDecision` -> 204 with an empty body.
 /// - Undecodable body -> 400 (the hook script prints nothing for any non-200). Anything else -> 404.
 ///
+/// Only local tools may talk to it, never a web page the user happens to have open: a request with an
+/// `Origin` header or a `Host` other than `127.0.0.1` / `localhost` (DNS rebinding) is refused with 403,
+/// and a POST must be `Content-Type: application/json` (415 otherwise), which a page cannot send without
+/// a CORS preflight that is never answered.
+///
 /// The handler runs in a `Task` per request. For `PermissionRequest` it may suspend for minutes;
 /// the connection is held open meanwhile. If the client disconnects first, the server CANCELS that
 /// task (this is how `SessionStore.requestDecision` learns the request went away).
@@ -147,6 +152,37 @@ public final class HookServer: @unchecked Sendable {
     static let ackBody = #"{"ok":true}"#
     private static let hookPrefix = "/hook/"
 
+    /// The refusal for a request that did not come from a local tool, or nil when it may be routed.
+    /// `port` is the bound port; nil skips the port part of the Host check.
+    static func rejection(for request: HTTPRequest, port: UInt16?) -> HTTPResponse? {
+        let forbidden = HTTPResponse.json(403, #"{"ok":false,"error":"local requests only"}"#)
+        // Browsers add Origin to every cross-origin request and to every POST; curl and the hook never do.
+        if request.header("origin") != nil { return forbidden }
+        if let site = request.header("sec-fetch-site")?.lowercased(), site != "none", site != "same-origin" { return forbidden }
+        guard let host = request.header("host")?.lowercased(), isLoopbackHost(host, port: port) else { return forbidden }
+        if request.method == "POST" {
+            let type = request.header("content-type")?.lowercased() ?? ""
+            let media = type.split(separator: ";").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+            if media != "application/json" {
+                return .json(415, #"{"ok":false,"error":"Content-Type must be application/json"}"#)
+            }
+        }
+        return nil
+    }
+
+    /// `127.0.0.1`, `localhost` or `[::1]`, alone or with `:<port>` (which must be the bound port).
+    static func isLoopbackHost(_ host: String, port: UInt16?) -> Bool {
+        for name in ["127.0.0.1", "localhost", "[::1]"] {
+            if host == name { return true }
+            if host.hasPrefix(name + ":") {
+                let given = host.dropFirst(name.count + 1)
+                guard let n = UInt16(given) else { return false }
+                return port == nil || n == port
+            }
+        }
+        return false
+    }
+
     static func route(_ request: HTTPRequest) -> Route {
         switch (request.method, request.path) {
         case ("GET", "/health"), ("HEAD", "/health"):
@@ -229,7 +265,7 @@ public final class HookServer: @unchecked Sendable {
 
     private func accept(_ nw: NWConnection) {
         let connection = HookConnection(connection: nw, queue: queue, handler: handler,
-                                        maxBodyBytes: Self.maxBodyBytes) { [weak self] c in
+                                        maxBodyBytes: Self.maxBodyBytes, port: { [weak self] in self?.port }) { [weak self] c in
             self?.forget(c)
         }
         lock.lock()

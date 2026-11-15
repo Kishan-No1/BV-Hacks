@@ -587,7 +587,7 @@ private func hold(_ store: SessionStore, _ e: HookEvent, timeout: TimeInterval =
         let body = try BridgeFixture.data("permission-request-bash-npm-test")
         let client = RawClient(port: port)
         try await client.connect()
-        try await client.send(Data("POST /hook/PermissionRequest HTTP/1.1\r\nHost: x\r\nContent-Length: \(body.count)\r\n\r\n".utf8) + body)
+        try await client.send(Data("POST /hook/PermissionRequest HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nContent-Type: application/json\r\nContent-Length: \(body.count)\r\n\r\n".utf8) + body)
         #expect(await eventually { store.pending.count == 1 })
         client.close()
         #expect(await eventually { store.pending.isEmpty })

@@ -438,7 +438,7 @@ func startServer(_ handler: @escaping HookServer.Handler) async throws -> (HookS
         let body = try BridgeFixture.data("session-start")
         let client = RawClient(port: port)
         try await client.connect()
-        try await client.send(Data("POST /hook/SessionStart HTTP/1.1\r\nHost: x\r\nExpect: 100-continue\r\nContent-Length: \(body.count)\r\n\r\n".utf8))
+        try await client.send(Data("POST /hook/SessionStart HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nExpect: 100-continue\r\nContent-Length: \(body.count)\r\n\r\n".utf8))
         try await Task.sleep(for: .milliseconds(50))
         try await client.send(body)
         let raw = String(decoding: try await client.receiveAll(), as: UTF8.self)
@@ -548,5 +548,83 @@ func startServer(_ handler: @escaping HookServer.Handler) async throws -> (HookS
         #expect(HookServer.httpResponse(for: .decision(.allow)).contentType == "application/json")
         #expect(HookServer.httpResponse(for: .noDecision).status == 204)
         #expect(HookServer.httpResponse(for: .noDecision).body.isEmpty)
+    }
+}
+
+// MARK: - Review finding: web pages must not reach the hook server
+
+@Suite("Hook server refuses requests from web pages")
+struct HookServerOriginTests {
+    private func request(_ method: String = "POST", path: String = "/hook/PermissionRequest",
+                         headers: [String: String]) -> HTTPRequest {
+        HTTPRequest(method: method, path: path, headers: headers, body: Data("{}".utf8))
+    }
+
+    @Test func localToolsPass() {
+        let json = ["host": "127.0.0.1:47474", "content-type": "application/json"]
+        #expect(HookServer.rejection(for: request(headers: json), port: 47474) == nil)
+        #expect(HookServer.rejection(for: request(headers: ["host": "localhost:47474", "content-type": "application/json; charset=utf-8"]), port: 47474) == nil)
+        #expect(HookServer.rejection(for: request(headers: ["host": "LOCALHOST:47474", "content-type": "Application/JSON"]), port: 47474) == nil)
+        #expect(HookServer.rejection(for: request("GET", path: "/health", headers: ["host": "127.0.0.1:47474"]), port: 47474) == nil)
+        #expect(HookServer.rejection(for: request("GET", path: "/health", headers: ["host": "127.0.0.1"]), port: 47474) == nil)
+    }
+
+    @Test func anOriginHeaderIsRefused() {
+        for origin in ["https://evil.example", "http://127.0.0.1:47474", "null"] {
+            let r = request(headers: ["host": "127.0.0.1:47474", "content-type": "application/json", "origin": origin])
+            #expect(HookServer.rejection(for: r, port: 47474)?.status == 403, "\(origin)")
+        }
+        let fetch = request(headers: ["host": "127.0.0.1:47474", "content-type": "application/json", "sec-fetch-site": "cross-site"])
+        #expect(HookServer.rejection(for: fetch, port: 47474)?.status == 403)
+    }
+
+    @Test func aForeignHostIsRefused() {
+        for host in ["evil.example:47474", "evil.example", "127.0.0.1:1", "127.0.0.1.evil.example:47474", "localhost.evil.example", "127.0.0.1:abc"] {
+            let r = request("GET", path: "/health", headers: ["host": host])
+            #expect(HookServer.rejection(for: r, port: 47474)?.status == 403, "\(host)")
+        }
+        #expect(HookServer.rejection(for: request("GET", path: "/health", headers: [:]), port: 47474)?.status == 403)
+    }
+
+    @Test func aSimpleCORSPostIsRefused() {
+        for type in ["text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x", ""] {
+            var headers = ["host": "127.0.0.1:47474"]
+            if !type.isEmpty { headers["content-type"] = type }
+            #expect(HookServer.rejection(for: request(headers: headers), port: 47474)?.status == 415, "\(type)")
+        }
+    }
+
+    /// The reported attack, end to end: a text/plain POST with an Origin never reaches the handler.
+    @Test func aWebPagePostNeverReachesTheHandler() async throws {
+        let recorder = Recorder()
+        let (server, port) = try await startServer { event in
+            await recorder.record(event)
+            return .decision(.allow)
+        }
+        defer { server.stop() }
+        let body = try fixture("permission-request-bash-npm-test")
+        let attempts = [
+            "Host: 127.0.0.1:\(port)\r\nOrigin: https://evil.example\r\nContent-Type: text/plain",
+            "Host: 127.0.0.1:\(port)\r\nOrigin: https://evil.example\r\nContent-Type: application/json",
+            "Host: 127.0.0.1:\(port)\r\nContent-Type: text/plain",
+            "Host: evil.example:\(port)\r\nContent-Type: application/json",
+        ]
+        for head in attempts {
+            let client = RawClient(port: port)
+            try await client.connect()
+            try await client.send(Data("POST /hook/PermissionRequest HTTP/1.1\r\n\(head)\r\nContent-Length: \(body.count)\r\n\r\n".utf8) + body)
+            let reply = try #require(RawClient.parse(try await client.receiveAll()))
+            client.close()
+            #expect(reply.status == 403 || reply.status == 415, "\(head)")
+            #expect(!reply.bodyString.contains("allow"), "\(head)")
+        }
+        let health = RawClient(port: port)
+        try await health.connect()
+        try await health.send(Data("GET /health HTTP/1.1\r\nHost: evil.example:\(port)\r\n\r\n".utf8))
+        #expect(try #require(RawClient.parse(try await health.receiveAll())).status == 403)
+        health.close()
+        #expect(await recorder.events.isEmpty)
+        // The real hook still gets through.
+        #expect(try await HTTPClient.post(port: port, event: "PermissionRequest", body: body).status == 200)
     }
 }

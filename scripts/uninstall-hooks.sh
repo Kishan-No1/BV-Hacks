@@ -3,7 +3,7 @@
 #
 #   scripts/uninstall-hooks.sh [--settings PATH] [--dry-run]
 #
-# Removes only handlers whose command contains "nod-hook.sh", then drops the matcher groups, event
+# Removes only handlers that run a script named exactly nod-hook.sh (not my-nod-hook.sh), then drops the matcher groups, event
 # arrays and the "hooks" object that became empty because of it. Everything else stays untouched.
 # The file is backed up to <file>.nod-backup-<YYYYmmdd-HHMMSS> first. No file, or no Nod entries: no-op.
 set -euo pipefail
@@ -15,7 +15,7 @@ usage() {
   cat <<'EOF'
 Usage: uninstall-hooks.sh [--settings PATH] [--dry-run]
 
-Removes Nod's Claude Code hooks (every handler whose command contains nod-hook.sh).
+Removes Nod's Claude Code hooks (every handler that runs a script named nod-hook.sh).
 
   --settings PATH  settings file to edit (default: ~/.claude/settings.json)
   --dry-run        print the resulting JSON and write nothing
@@ -84,7 +84,7 @@ fi
 
 # shellcheck disable=SC2016 # jq program, not shell expansions
 JQ_LIB='
-def is_nod: type == "object" and ((.command | type) == "string") and (.command | contains("nod-hook.sh"));
+def is_nod: type == "object" and ((.command | type) == "string") and (.command | test("(^|[/ \"\u0027])nod-hook\\.sh[\"\u0027]?( |$)"));
 def has_nod: type == "object" and ((.hooks | type) == "array") and any(.hooks[]; is_nod);
 def count_nod:
   if type == "object" then

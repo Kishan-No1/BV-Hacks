@@ -15,6 +15,8 @@ final class HookConnection: @unchecked Sendable {
     private let queue: DispatchQueue
     private let handler: HookServer.Handler
     private let maxBodyBytes: Int
+    /// The server's bound port, for the Host check.
+    private let port: @Sendable () -> UInt16?
     private let onClose: (HookConnection) -> Void
 
     private var buffer = Data()
@@ -26,11 +28,13 @@ final class HookConnection: @unchecked Sendable {
     private var readDeadline: DispatchWorkItem?
 
     init(connection: NWConnection, queue: DispatchQueue, handler: @escaping HookServer.Handler,
-         maxBodyBytes: Int, onClose: @escaping (HookConnection) -> Void) {
+         maxBodyBytes: Int, port: @escaping @Sendable () -> UInt16? = { nil },
+         onClose: @escaping (HookConnection) -> Void) {
         self.connection = connection
         self.queue = queue
         self.handler = handler
         self.maxBodyBytes = maxBodyBytes
+        self.port = port
         self.onClose = onClose
     }
 
@@ -89,6 +93,11 @@ final class HookConnection: @unchecked Sendable {
     }
 
     private func handle(_ request: HTTPRequest) {
+        // Web pages (Origin, foreign Host, non-JSON POST) never reach the router or the handler.
+        if let refusal = HookServer.rejection(for: request, port: port()) {
+            respond(refusal)
+            return
+        }
         switch HookServer.route(request) {
         case .respond(let response):
             respond(response)

@@ -663,3 +663,48 @@ private let existingSettings = """
         #expect(r.err.contains("no such fixture"))
     }
 }
+
+// MARK: - Review findings: SIGKILL fail-open, exact hook-name matching
+
+@Suite(.timeLimit(.minutes(1))) struct HookScriptHardeningTests {
+    /// SIGKILL runs no trap: the watchdog must end curl (so Nod drops the card) and remove the payload.
+    @Test func aSIGKILLedHookStillDropsTheConnectionAndItsTempFiles() async throws {
+        let tmp = try TempDir()
+        let recorder = Recorder()
+        let (server, port) = try await startServer(sleepingHandler(recorder))
+        defer { server.stop() }
+        let proc = try Subprocess([Scripts.hook, "PermissionRequest"],
+                                  env: ["NOD_PORT": String(port), "TMPDIR": tmp.url.path],
+                                  stdin: try BridgeFixture.data("permission-request-bash-npm-test"))
+        #expect(await eventually { await recorder.started == 1 })
+        kill(proc.process.processIdentifier, SIGKILL)
+        _ = await proc.wait()
+        #expect(await eventually(timeout: .seconds(5)) { await recorder.cancelled == 1 })
+        #expect(await eventually(timeout: .seconds(5)) { server.openConnectionCount == 0 })
+        #expect(await eventually(timeout: .seconds(5)) {
+            (try? FileManager.default.contentsOfDirectory(atPath: tmp.url.path).isEmpty) == true
+        }, "the payload copy is removed")
+    }
+
+    @Test func uninstallAndReinstallLeaveASimilarlyNamedHookAlone() async throws {
+        let tmp = try TempDir()
+        try tmp.write("""
+        {"hooks": {
+          "Stop": [{"hooks": [
+            {"type": "command", "command": "~/bin/my-nod-hook.sh Stop"},
+            {"type": "command", "command": "/somewhere/nod-hook.sh.bak Stop"},
+            {"type": "command", "command": "/somewhere/nod-hook.sh Stop"},
+            {"type": "command", "command": "'/quoted path/nod-hook.sh' Stop"},
+            {"type": "command", "command": "nod-hook.sh"}
+          ]}]
+        }}
+        """, to: tmp.settings)
+        #expect(try await tmp.uninstall().status == 0)
+        let left = try json(tmp.settings)["hooks"]?["Stop"]?.arrayValue?.first?["hooks"]?.arrayValue ?? []
+        #expect(left.compactMap { $0.string("command") } == ["~/bin/my-nod-hook.sh Stop", "/somewhere/nod-hook.sh.bak Stop"])
+        #expect(try await tmp.install().status == 0)
+        let stop = try json(tmp.settings)["hooks"]?["Stop"]?.arrayValue ?? []
+        let commands = stop.flatMap { $0["hooks"]?.arrayValue ?? [] }.compactMap { $0.string("command") }
+        #expect(commands == ["~/bin/my-nod-hook.sh Stop", "/somewhere/nod-hook.sh.bak Stop", "'\(Scripts.hook)' Stop"])
+    }
+}

@@ -30,8 +30,10 @@ fi
 
 WORK=""
 CURL_PID=""
+WATCHDOG_PID=""
 cleanup() {
   if [ -n "$CURL_PID" ]; then kill "$CURL_PID" 2>/dev/null; fi
+  if [ -n "$WATCHDOG_PID" ]; then kill "$WATCHDOG_PID" 2>/dev/null; fi
   if [ -n "$WORK" ]; then rm -rf "$WORK"; fi
 }
 trap cleanup EXIT
@@ -51,6 +53,19 @@ curl -sS --noproxy '*' --connect-timeout 0.3 --max-time "$MAX_TIME" \
   --data-binary @"$WORK/in" -o "$WORK/body" -w '%{http_code}' \
   "http://127.0.0.1:$PORT/hook/$EVENT" >"$WORK/status" 2>/dev/null </dev/null &
 CURL_PID=$!
+
+# A held PermissionRequest can last minutes. If this script is SIGKILLed (or its parent dies without
+# signalling it) no trap runs, so a watchdog ends curl and removes the payload within about a second.
+# Nod then sees the connection drop and takes the card out of the notch.
+if [ "$EVENT" = "PermissionRequest" ]; then
+  (
+    while kill -0 "$$" 2>/dev/null; do sleep 1; done
+    kill "$CURL_PID" 2>/dev/null
+    rm -rf "$WORK"
+  ) </dev/null >/dev/null 2>&1 &
+  WATCHDOG_PID=$!
+fi
+
 wait "$CURL_PID" 2>/dev/null
 CURL_RC=$?
 CURL_PID=""
