@@ -34,6 +34,7 @@ export const REQ_LOW: ReqSpec = {
   },
   acts: "allow",
   always: "npm test",
+  learned: { text: "Likely allow · 97%" },
 };
 const REQ_GIT: ReqSpec = {
   ring: 2,
@@ -47,6 +48,7 @@ const REQ_GIT: ReqSpec = {
   },
   acts: "allow",
   always: "git log",
+  learned: { text: "Likely allow · 94%" },
 };
 export const REQ_MED: ReqSpec = {
   ring: 0,
@@ -61,6 +63,7 @@ export const REQ_MED: ReqSpec = {
     add: "+  if (res.status === 401) return refreshAndRetry(token);",
   },
   acts: "edit",
+  learned: { text: "Likely allow · 91%" },
 };
 export const REQ_HIGH: ReqSpec = {
   ring: 1,
@@ -77,6 +80,7 @@ export const REQ_HIGH: ReqSpec = {
     ],
   },
   acts: "high",
+  learned: { text: "Likely deny · 95%" },
 };
 const Q1: ReqSpec = {
   ring: 3,
@@ -90,6 +94,7 @@ const Q1: ReqSpec = {
   },
   acts: "allow",
   always: "curl",
+  learned: { text: "Likely allow · 72%" },
 };
 const Q2: ReqSpec = {
   ring: 2,
@@ -99,6 +104,7 @@ const Q2: ReqSpec = {
   body: { kind: "cmd", cmd: "npm run build", why: "build · inside repo" },
   acts: "allow",
   always: "npm run build",
+  learned: { text: "Likely allow · 96%" },
 };
 const Q3: ReqSpec = { ...REQ_LOW, over: { 0: "need" } };
 
@@ -328,6 +334,8 @@ export function islandFx(f: number): IslandFx {
     pulse(f, T.k2.from + 2, 34),
     pulse(f, T.h1.from + 12, 34),
   );
+  // the learned chip pops once, just after the first card opens
+  fx.learnPop = pulse(f, T.a1.from + 46, 34);
   fx.chipPop = [0, 1, 2].map((i) => pulse(f, T.h2.from + sec(2.3) + i * 8, 28));
   fx.diffPop = pulse(f, T.k3.from + sec(1.4), 40);
   return fx;

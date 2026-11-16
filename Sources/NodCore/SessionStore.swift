@@ -20,6 +20,8 @@ public final class SessionStore {
     public private(set) var toast: Toast?
     /// The session Progress shows. nil = automatic (see `activeSession`).
     public var selectedSessionID: String?
+    /// The learned approval chip for each pending request that has one (see `ApprovalModel`).
+    public private(set) var predictions: [UUID: ApprovalPrediction] = [:]
 
     // MARK: Constants
 
@@ -33,12 +35,19 @@ public final class SessionStore {
 
     @ObservationIgnored private let riskEngine: RiskEngine
     @ObservationIgnored private let rules: RulesStore?
+    @ObservationIgnored private let approvals: ApprovalModelStore?
+    /// false while a demo plays its scripted decisions through this store, so they never train the model.
+    @ObservationIgnored public var learnsFromDecisions = true
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var waiters: [UUID: CheckedContinuation<Decision?, Never>] = [:]
 
-    public init(riskEngine: RiskEngine = RiskEngine(), rules: RulesStore? = nil, now: @escaping () -> Date = Date.init) {
+    /// `approvals`: the learned approval model. It predicts a chip for each request and learns from each
+    /// Allow or Deny made in the island. nil = no chips and no learning.
+    public init(riskEngine: RiskEngine = RiskEngine(), rules: RulesStore? = nil, approvals: ApprovalModelStore? = nil,
+                now: @escaping () -> Date = Date.init) {
         self.riskEngine = riskEngine
         self.rules = rules
+        self.approvals = approvals
         self.now = now
     }
 
@@ -168,6 +177,7 @@ public final class SessionStore {
             ruleSuggestion: rules?.suggestion(toolName: tool, toolInput: input, cwd: cwd, assessment: assessment),
             receivedAt: t)
         let id = request.id
+        if let prediction = approvals?.predict(request) { predictions[id] = prediction }
         pending.append(request)
         sessions[i].status = .needsYou
 
@@ -203,6 +213,8 @@ public final class SessionStore {
         if remember, decision == .allow, let suggestion = request.ruleSuggestion {
             rules?.add(suggestion.makeRule(now: now()))
         }
+        // Only a decision made here trains the model: not a timeout, a dismissal, or an answer in the terminal.
+        if learnsFromDecisions { approvals?.learn(request, allowed: decision == .allow) }
         toast = Toast(kind: decision == .allow ? .allowed : .denied, sessionID: request.sessionID, at: now())
         finish(id, decision: decision, statusAfter: .working)
         // A denied call never runs, so no PostToolUse(Failure) follows (seen live with Claude Code 2.1.325):
@@ -224,6 +236,7 @@ public final class SessionStore {
     private func finish(_ id: UUID, decision: Decision?, statusAfter: SessionStatus) {
         let request = pending.first { $0.id == id }
         pending.removeAll { $0.id == id }
+        predictions[id] = nil
         if let cont = waiters.removeValue(forKey: id) { cont.resume(returning: decision) }
         if let request, !hasPending(sessionID: request.sessionID),
            let i = sessions.firstIndex(where: { $0.id == request.sessionID }),

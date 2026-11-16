@@ -20,6 +20,7 @@ HOOK="$ROOT/hooks/nod-hook.sh"
 FIX="$ROOT/Tests/NodCoreTests/Fixtures"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/nod-e2e.XXXXXX")"
 RULES="$WORK/rules.json"
+APPROVALS="$WORK/approvals.json"
 APP_PID=""
 FAILS=0
 
@@ -53,7 +54,7 @@ check_eq() { # name expected actual
 
 start_app() { # mode
   stop_app
-  NOD_PORT="$PORT" NOD_RULES_FILE="$RULES" NOD_LOG=1 NOD_TEST_DECIDE_DELAY=0.5 \
+  NOD_PORT="$PORT" NOD_RULES_FILE="$RULES" NOD_APPROVALS_FILE="$APPROVALS" NOD_LOG=1 NOD_TEST_DECIDE_DELAY=0.5 \
     "$APP_BIN" --test-autodecide "$1" >>"$WORK/app.log" 2>&1 &
   APP_PID=$!
   local i
@@ -114,6 +115,8 @@ check_eq "hook: high-risk request (rm -rf outside) -> deny JSON" "$DENY" "$(hook
 check_eq "hook: high-risk request (Write .env.local) -> deny JSON" "$DENY" "$(hook PermissionRequest permission-request-write-env)"
 check_eq "hook: AskUserQuestion passes through (no output)" "" "$(hook PermissionRequest permission-request-ask-user-question)"
 check_eq "hook: Stop prints nothing" "" "$(hook Stop stop)"
+learned="$(jq -r .decisions "$APPROVALS" 2>/dev/null)"
+if [ -n "$learned" ] && [ "$learned" -gt 0 ] 2>/dev/null; then ok "approvals: the model learned from $learned decisions (temp file)"; else bad "approvals: nothing learned in $APPROVALS"; fi
 
 echo "== 4. always-allow rules"
 start_app always || exit 1
@@ -160,7 +163,7 @@ compose_app() { # edit repeat
   stop_app
   : >"$TMUX_LOG"
   : >"$WORK/compose.log"
-  NOD_PORT="$PORT" NOD_RULES_FILE="$RULES" NOD_LOG=1 NOD_STYLE_FILE="$STYLE" NOD_PANES_DIR="$PANES" \
+  NOD_PORT="$PORT" NOD_RULES_FILE="$RULES" NOD_APPROVALS_FILE="$APPROVALS" NOD_LOG=1 NOD_STYLE_FILE="$STYLE" NOD_PANES_DIR="$PANES" \
     NOD_TMUX="$FAKE_TMUX" FAKE_TMUX_LOG="$TMUX_LOG" NOD_TEST_COMPOSE_EDIT="$1" NOD_TEST_COMPOSE_REPEAT="$2" \
     ANTHROPIC_API_KEY="" "$APP_BIN" --test-compose "$SENTINEL fix the flaky login test" >>"$WORK/compose.log" 2>&1 &
   APP_PID=$!

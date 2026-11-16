@@ -27,6 +27,12 @@ Send. It learns from your edits: add "run tests after edits" once and the next p
   a 0.9 second press-and-hold.
 - **Always-allow rules.** "Always allow `npm test`" saves a per-repo rule. Later matches are answered at once and
   counted in the menu. Rules never match compound commands, anything rated high, or anything outside the project.
+- **Learned approvals.** Nod learns your own approval habits. Every Allow or Deny you make in the notch trains a
+  small on-device model (online logistic regression with AdaGrad), and later cards show what you would most likely
+  do: "Likely allow · 94%", or an amber "Unusual for you · 81% deny"
+  ([screenshot](docs/design/app-request-unusual.png)) when your habit and the risk level disagree.
+  The chip appears after 5 decisions and only when the model leans at least 60% one way. It is advice only: it
+  never answers a request, never changes the default button, and never skips the hold on a high-risk card.
 - **Several sessions.** Requests from all sessions queue up first-in, first-out.
 - **Prompt composer.** `⌃⌥P` (or a click on the session's avatar) opens a text field in the notch. **Polish** sends
   your rough text to Claude Haiku 5.5 and puts the result in an editable pane. **Send** types it into the session's
@@ -138,6 +144,9 @@ You can still answer in the terminal: the first answer wins and Nod drops the re
   shell, AppleScript or the Accessibility API. Control characters are stripped first.
 
 Rules live in `~/Library/Application Support/Nod/rules.json`. Delete an entry there to remove a rule.
+The learned approval model lives in `~/Library/Application Support/Nod/approvals.json` (mode 0600): one weight per
+feature, plus counts. The menu shows how many decisions it has learned from and has **Reveal learned approvals in
+Finder** and **Reset learned approvals…**.
 The learned style lives in `~/Library/Application Support/Nod/style.json` (mode 0600). It is readable JSON: the
 notes with their counts, and your last 50 prompts as rough text, polish and what you sent. The menu has
 **Reveal learned style in Finder** and **Reset learned style…**.
@@ -153,7 +162,8 @@ NOD_LOG=1 NOD_PORT=47480 build/Nod.app/Contents/MacOS/Nod     # debug log, anoth
 
 `NOD_LOG` output never contains prompt text, polished text, style notes or the API key; composer lines are counts
 and status only (`composer: polish ok, 42 -> 180 chars, 2 style notes, 412 ms`). `NOD_STYLE_FILE`,
-`NOD_PANES_DIR` and `NOD_TMUX` point Nod at another style file, pane directory or tmux binary.
+`NOD_PANES_DIR`, `NOD_TMUX` and `NOD_APPROVALS_FILE` point Nod at another style file, pane directory, tmux binary
+or approval model.
 
 ## Architecture
 
@@ -181,7 +191,8 @@ tmux pane  <-- send-keys / paste-buffer --  TmuxPromptSender  <-- Send --  Compo
 
 - `Sources/NodCore`: models, hook contract, risk engine, rules, session store, HTTP server. No UI.
   `Sources/NodCore/Compose` holds the composer's logic: the style learner and its store, the polish request,
-  the git context, and the tmux send path.
+  the git context, and the tmux send path. `Sources/NodCore/Learn` holds the approval model: feature extraction,
+  the logistic regression, and its store.
 - `Sources/Nod`: the app (panel, island views, hotkeys, demo, snapshots).
 - `hooks/nod-hook.sh`: the only thing Claude Code runs. For a `PermissionRequest` the HTTP response is held open
   until you decide, and the hook prints exactly one line:
@@ -198,7 +209,8 @@ The composer is specified in
 
 ## Safety guarantees
 
-- **Nothing is auto-allowed except by a rule you created.** The risk engine only advises.
+- **Nothing is auto-allowed except by a rule you created.** The risk engine and the learned approval model only
+  advise.
 - **Fail open to Claude Code's own prompt.** If Nod is not running, crashes, or times out, the hook prints nothing
   and exits 0 within milliseconds, and Claude Code asks in the terminal as usual. The hook never exits non-zero.
 - **Nothing is sent to a session without you.** The composer never auto-sends: Polish only fills the editable
@@ -224,8 +236,9 @@ Before the composer, nothing did. Now one thing does, and only when you press **
 It never contains file contents, diffs, the session's transcript, permission requests, or your prompt history.
 Anthropic handles the request under the terms of your API account.
 
-Everything else stays on the machine: the style profile and its learning (plain Swift code, no model), the git
-commands that gather the context, the tmux send, and all of the approval features.
+Everything else stays on the machine: the style profile and its learning (plain Swift code, no model), the
+learned approval model (trained and run in-process, never uploaded), the git commands that gather the context, the
+tmux send, and all of the approval features.
 
 To turn it off, untick **Polish prompts with Claude Haiku** in the menu. The composer then sends your text as
 written and Nod makes no network request at all. The profile still learns from what you send.
@@ -233,16 +246,17 @@ written and Nod makes no network request at all. The profile still learns from w
 ## Tests
 
 ```sh
-swift test          # 437 tests: risk engine, rules, formatter, server, store, hook scripts, island model,
-                    # style learner, polish request, git context, tmux argv, nod-claude, composer flow
+swift test          # 454 tests: risk engine, rules, formatter, server, store, hook scripts, island model,
+                    # style learner, polish request, git context, tmux argv, nod-claude, composer flow,
+                    # approval model (features, learning, persistence, what does and does not train it)
 scripts/e2e.sh      # bundles the app, then drives the real path with nod-hook.sh and checks the decision bytes;
                     # then the composer: stub polish -> learned note -> the exact tmux argv
 ```
 
 `scripts/e2e.sh` starts the app with `--test-autodecide`, a test-only flag that answers each request through the
-same model actions as the buttons and hotkeys. It uses a private port and a temporary rules file. The composer part
-uses `--test-compose`, which polishes with an offline stub (no network), a fake `tmux` that records its arguments,
-and temporary style and pane files. Unit tests never run tmux or call the API.
+same model actions as the buttons and hotkeys. It uses a private port and temporary rules and approval-model files,
+and checks that the decisions trained the model. The composer part uses `--test-compose`, which polishes with an
+offline stub (no network), a fake `tmux` that records its arguments, and temporary style and pane files. Unit tests never run tmux or call the API.
 
 ## Limitations
 
@@ -258,5 +272,9 @@ and temporary style and pane files. Unit tests never run tmux or call the API.
   mean; the note is dropped once you delete its effect twice, or edit `style.json`.
 - The "is this pane at its prompt" check reads the pane's text and was calibrated on Claude Code 2.1.322. If a
   later version draws its input differently, Send reports "not at its prompt" and offers Copy.
+- The approval model learns from features of the request (tool, program, prefix, risk level, reasons, file
+  extension, host, repo folder name), not from what the command means. It needs a handful of decisions before it
+  says anything, and it can be confidently wrong about a request that looks like ones you usually allow. Read the
+  card.
 - Hook payloads over 1 MB are skipped, so that step is missing from the progress list.
 - Not notarized or sandboxed; the bundle is ad-hoc signed for local use.

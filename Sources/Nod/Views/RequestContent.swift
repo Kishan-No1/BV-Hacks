@@ -30,6 +30,7 @@ struct RequestContent: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
+                if let prediction = store.predictions[request.id] { PredictionChip(prediction: prediction) }
                 RiskPill(level: a.level)
             }
             .padding(.top, 12)

@@ -4,7 +4,7 @@ import Foundation
 import NodCore
 
 /// Command-line options: `--demo`, `--demo-http`, `--snapshot DIR`, `--version`; `NOD_PORT`, `NOD_RULES_FILE`,
-/// `NOD_STYLE_FILE` and `NOD_PANES_DIR` env.
+/// `NOD_STYLE_FILE`, `NOD_APPROVALS_FILE` and `NOD_PANES_DIR` env.
 struct LaunchOptions: Equatable {
     var demo = false
     var demoHTTP = false
@@ -17,6 +17,8 @@ struct LaunchOptions: Equatable {
     var rulesFile: String?
     /// Style profile override (`NOD_STYLE_FILE`), so tests never touch the real learned style.
     var styleFile: String?
+    /// Learned approval model override (`NOD_APPROVALS_FILE`), so tests never train the real model.
+    var approvalsFile: String?
     /// Pane records override (`NOD_PANES_DIR`): where `scripts/nod-claude` wrote its session -> pane files.
     var panesDir: String?
     /// TEST ONLY (`--test-compose TEXT`): drive the composer without a human. Polishes with the offline stub
@@ -54,6 +56,7 @@ struct LaunchOptions: Equatable {
         }
         if let f = env["NOD_RULES_FILE"], !f.isEmpty { o.rulesFile = f }
         if let f = env["NOD_STYLE_FILE"], !f.isEmpty { o.styleFile = f }
+        if let f = env["NOD_APPROVALS_FILE"], !f.isEmpty { o.approvalsFile = f }
         if let d = env["NOD_PANES_DIR"], !d.isEmpty { o.panesDir = d }
         return o
     }

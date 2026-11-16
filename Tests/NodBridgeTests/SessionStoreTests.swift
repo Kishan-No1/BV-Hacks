@@ -281,6 +281,53 @@ private func hold(_ store: SessionStore, _ e: HookEvent, timeout: TimeInterval =
         #expect(await store.requestDecision(for: try event("permission-request-bash-npm-test"), timeout: 0.05) == nil)
     }
 
+    // MARK: Learned approvals
+
+    @Test func aDecisionInTheIslandTrainsTheModelAndTheNextRequestGetsAChip() async throws {
+        let approvals = ApprovalModelStore(fileURL: nil)
+        let store = SessionStore(approvals: approvals)
+        let e = try event("permission-request-bash-npm-test")
+        for n in 1...ApprovalModel.minDecisions {
+            let held = await hold(store, e)
+            #expect(store.predictions.isEmpty, "no chip before the model has \(ApprovalModel.minDecisions) decisions")
+            store.resolve(store.pending[0].id, .allow)
+            #expect(await held.value == .allow)
+            #expect(approvals.model.decisions == n)
+        }
+
+        let held = await hold(store, e)
+        let id = store.pending[0].id
+        let prediction = try #require(store.predictions[id])
+        #expect(prediction.likelyAllow)
+        #expect(prediction.decisions == ApprovalModel.minDecisions)
+        store.resolve(id, .deny(message: nil))
+        #expect(await held.value == .deny(message: nil))
+        #expect(store.predictions.isEmpty, "the chip goes with its request")
+        #expect(approvals.model.decisions == ApprovalModel.minDecisions + 1)
+        #expect(approvals.model.allows == ApprovalModel.minDecisions)
+    }
+
+    @Test func onlyDecisionsMadeInTheIslandTrainTheModel() async throws {
+        let approvals = ApprovalModelStore(fileURL: nil)
+        let rules = RulesStore(fileURL: nil)
+        let store = SessionStore(rules: rules, approvals: approvals)
+        let e = try event("permission-request-bash-npm-test")
+
+        // A timeout: Claude Code asks in the terminal.
+        #expect(await store.requestDecision(for: e, timeout: 0.05) == nil)
+        // A dismissal.
+        _ = await hold(store, e)
+        store.dismiss(store.pending[0].id)
+        // A rule answering on its own.
+        let held = await hold(store, e)
+        store.resolve(store.pending[0].id, .allow, remember: true)
+        _ = await held.value
+        #expect(approvals.model.decisions == 1, "only the click counts")
+        #expect(await store.requestDecision(for: e, timeout: 5) == .allow)
+        #expect(approvals.model.decisions == 1, "an auto-allow by a rule is not a decision")
+        #expect(store.predictions.isEmpty)
+    }
+
     // MARK: Pass-through tools
 
     @Test(arguments: ["AskUserQuestion", "ExitPlanMode"])
