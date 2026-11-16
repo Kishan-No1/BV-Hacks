@@ -274,6 +274,8 @@ struct IslandContent: View {
             ProgressContent(model: model)
         case .request(let r):
             RequestContent(model: model, request: r)
+        case .composer:
+            ComposerContent(model: model)
         }
     }
 }

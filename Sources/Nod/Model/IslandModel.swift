@@ -18,6 +18,9 @@ final class IslandModel {
         }
     }
 
+    /// The prompt composer (rough text -> polish -> edit -> send). Inert until the app wires real services in.
+    let composer = ComposerModel()
+
     var notch: NotchMetrics = .simulated
     /// The state on screen. Changes are applied with the open / nudge / close springs.
     private(set) var displayedState: IslandState = .idle
@@ -54,12 +57,18 @@ final class IslandModel {
     init(store: SessionStore, renderMode: RenderMode = .live) {
         self.store = store
         self.renderMode = renderMode
+        composer.session = { [weak self] id in self?.store.session(id: id) }
+        composer.isSessionBlocked = { [weak self] id in
+            guard let self else { return false }
+            return self.store.pending.contains { $0.sessionID == id } || self.store.session(id: id)?.status == .needsYou
+        }
     }
 
     // MARK: Derivation
 
     var derivedState: IslandState {
-        IslandState.derive(store: store, visibleToast: toastClock.visible?.kind, isHovering: isHovering, forceProgress: forceProgress)
+        IslandState.derive(store: store, visibleToast: toastClock.visible?.kind, isHovering: isHovering,
+                           forceProgress: forceProgress, composer: composer.isOpen ? composer.layout : nil)
     }
 
     /// The session Progress shows: the clicked avatar, else the one pinned when Progress opened, else the store's pick.
@@ -257,6 +266,30 @@ final class IslandModel {
 
     func select(sessionID: String) {
         store.selectedSessionID = sessionID
+    }
+
+    // MARK: Composer
+
+    /// Opens the composer aimed at `sessionID`, else the session Progress shows, else the first one.
+    func openComposer(sessionID: String? = nil) {
+        let target = sessionID ?? store.selectedSessionID ?? progressSession?.id ?? store.sessions.first?.id
+        Log.debug("action: open composer")
+        composer.open(sessionID: target)
+    }
+
+    /// ⌃⌥P: open the composer, or close it and keep the draft.
+    func toggleComposer() {
+        if composer.isOpen { composer.close() } else { openComposer() }
+    }
+
+    /// An avatar click in Progress: the avatar already showing opens the composer for that session; any
+    /// other avatar switches Progress to it, as before.
+    func avatarClicked(_ sessionID: String) {
+        if progressSession?.id == sessionID {
+            openComposer(sessionID: sessionID)
+        } else {
+            select(sessionID: sessionID)
+        }
     }
 }
 
