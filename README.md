@@ -1,7 +1,6 @@
 # notchAgent
 
-_Formerly Nod._ If you installed the hooks before the rename, run `scripts/install-hooks.sh` again; it replaces the old
-`nod-hook.sh` entries. Your rules, learned approvals and API key carry over.
+
 
 **Approve your Claude Code agents from the MacBook notch, with a plain-English read-out of how risky each request is.**
 
