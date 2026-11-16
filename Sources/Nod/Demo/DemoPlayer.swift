@@ -56,7 +56,18 @@ final class DemoPlayer {
 
     /// A demo store never writes rules to disk.
     static func makeStore(clock: DemoClock) -> SessionStore {
-        SessionStore(rules: RulesStore(fileURL: nil), now: { clock.now() })
+        SessionStore(rules: RulesStore(fileURL: nil), approvals: makeApprovals(), now: { clock.now() })
+    }
+
+    /// An in-memory approval model trained on `DemoScript.approvalHistory()`. Never the user's real model.
+    static func makeApprovals() -> ApprovalModelStore {
+        let approvals = ApprovalModelStore(fileURL: nil)
+        let engine = RiskEngine()
+        for h in DemoScript.approvalHistory() {
+            let assessment = engine.assess(toolName: h.tool, toolInput: h.input, cwd: h.session.cwd)
+            approvals.learn(toolName: h.tool, toolInput: h.input, cwd: h.session.cwd, assessment: assessment, allowed: h.allowed)
+        }
+        return approvals
     }
 
     init(store: SessionStore, clock: DemoClock, mode: Mode, transport: Transport = .direct, model: IslandModel? = nil) {

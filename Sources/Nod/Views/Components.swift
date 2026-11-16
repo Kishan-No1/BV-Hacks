@@ -149,6 +149,25 @@ struct ReasonChip: View {
     }
 }
 
+/// The learned-approval chip next to the risk pill: "Likely allow · 94%". Amber when the user's habit and the
+/// risk read-out disagree ("Unusual for you · 78% deny"). Advisory only; the buttons never change with it.
+struct PredictionChip: View {
+    let prediction: ApprovalPrediction
+
+    var body: some View {
+        let tint = prediction.unusual ? Theme.amber : Color.white
+        Text(prediction.label)
+            .font(Theme.font(11.5, .semibold))
+            .foregroundStyle(prediction.unusual ? Theme.amber : Theme.ink2)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 9)
+            .background(Capsule().fill(tint.opacity(prediction.unusual ? 0.12 : 0.07)))
+            .overlay(Capsule().strokeBorder(tint.opacity(prediction.unusual ? 0.28 : 0.12), lineWidth: 0.5))
+            .fixedSize()
+            .help("Learned on this Mac from your last \(prediction.decisions) decisions. Advice only: it never answers for you.")
+    }
+}
+
 struct PressScaleStyle: ButtonStyle {
     var scale: CGFloat = 0.965
     func makeBody(configuration: Configuration) -> some View {

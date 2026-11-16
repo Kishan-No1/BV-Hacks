@@ -6,3 +6,4 @@ DerivedData/
 node_modules/
 .build/
 *.png.tmp
+.claude/

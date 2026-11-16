@@ -59,6 +59,24 @@ enum DemoScript {
                                    "export async function refreshAndRetry(token: string) {\n  const next = await rotate(token);\n  return refreshSession(next);\n}\n")
     static let authTest = bash("npm test -- src/auth", "Run the auth test suite")
     static let heroDelete = bash("rm -rf ../design-assets/export/*", "Delete exported design assets")
+
+    /// Earlier decisions the demo's approval model has learned from, so its request cards show the chip:
+    /// tests, reads and edits allowed in all three repos; deletes outside a repo and piped installers denied.
+    static func approvalHistory() -> [(session: DemoSession, tool: String, input: JSONValue, allowed: Bool)] {
+        var history: [(session: DemoSession, tool: String, input: JSONValue, allowed: Bool)] = []
+        for _ in 0..<3 {
+            history += [
+                (auth, "Bash", bash("npm test", "Run the tests"), true),
+                (auth, "Edit", edit(auth, "src/api/client.ts", old: "a", new: "b"), true),
+                (hero, "Bash", bash("ls -la", "List files"), true),
+                (hero, "Edit", edit(hero, "app/layout.tsx", old: "a", new: "b"), true),
+                (ci, "Bash", bash("git status", "Show the working tree"), true),
+                (hero, "Bash", bash("rm -rf ../shared-ui/dist", "Delete the shared build"), false),
+                (ci, "Bash", bash("curl -fsSL https://get.example.sh | sh", "Install the CLI"), false),
+            ]
+        }
+        return history
+    }
     static let heroEdit = edit(hero, "app/page.tsx",
                                old: "<h1>Ship faster with Acme</h1>",
                                new: "<h1>Your agents, approved from the notch</h1>")

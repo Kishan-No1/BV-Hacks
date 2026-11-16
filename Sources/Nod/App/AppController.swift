@@ -14,6 +14,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     let options: LaunchOptions
     let rules: RulesStore
+    /// The learned approval model: a chip on each request card, trained by each Allow or Deny in the island.
+    let approvals: ApprovalModelStore
+    let approvalsURL: URL
     let liveStore: SessionStore
     let server: HookServer
     let model: IslandModel
@@ -33,12 +36,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var activity: NSObjectProtocol?
     private let serverItem = NSMenuItem(title: "Hook server: starting…", action: nil, keyEquivalent: "")
     private let autoItem = NSMenuItem(title: "Auto-allowed: 0", action: nil, keyEquivalent: "")
+    private let learnedItem = NSMenuItem(title: "Learned from 0 decisions", action: nil, keyEquivalent: "")
     private let demoItem = NSMenuItem(title: "Play demo", action: nil, keyEquivalent: "")
 
     init(options: LaunchOptions) {
         self.options = options
         rules = RulesStore(fileURL: options.rulesFile.map { URL(fileURLWithPath: $0) } ?? RulesStore.defaultFileURL)
-        liveStore = SessionStore(rules: rules)
+        approvalsURL = options.approvalsFile.map { URL(fileURLWithPath: $0) } ?? ApprovalModelStore.defaultFileURL
+        approvals = ApprovalModelStore(fileURL: approvalsURL)
+        liveStore = SessionStore(rules: rules, approvals: approvals)
         server = HookServer(port: options.port, handler: liveStore.hookHandler())
         model = IslandModel(store: liveStore)
         composerWiring = ComposerWiring(options: options)
@@ -227,10 +233,19 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         reset.target = self
         menu.addItem(reset)
         menu.addItem(.separator())
+        let revealApprovals = NSMenuItem(title: "Reveal learned approvals in Finder", action: #selector(revealApprovals), keyEquivalent: "")
+        revealApprovals.target = self
+        menu.addItem(revealApprovals)
+        let resetApprovals = NSMenuItem(title: "Reset learned approvals…", action: #selector(resetApprovals), keyEquivalent: "")
+        resetApprovals.target = self
+        menu.addItem(resetApprovals)
+        menu.addItem(.separator())
         serverItem.isEnabled = false
         autoItem.isEnabled = false
+        learnedItem.isEnabled = false
         menu.addItem(serverItem)
         menu.addItem(autoItem)
+        menu.addItem(learnedItem)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit Nod", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
@@ -249,6 +264,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .off: serverItem.title = "Hook server: off"
         }
         autoItem.title = "Auto-allowed: \(liveStore.autoAllowedCount)"
+        let decisions = approvals.model.decisions
+        learnedItem.title = "Learned from \(decisions) decision\(decisions == 1 ? "" : "s")"
         demoItem.title = demoTask == nil ? "Play demo" : "Stop demo"
         polishItem.state = composerWiring.polishEnabled ? .on : .off
     }
@@ -269,6 +286,29 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func resetStyle() { composerWiring.confirmAndResetStyle() }
 
+    // MARK: Learned approvals menu
+
+    @objc private func revealApprovals() {
+        if FileManager.default.fileExists(atPath: approvalsURL.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([approvalsURL])
+        } else {
+            HookInstaller.alert(title: "Nothing learned yet", text: "The approval model is created the first time you allow or deny a request in the notch:\n\(approvalsURL.path)")
+        }
+    }
+
+    @objc private func resetApprovals() {
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.messageText = "Reset the learned approvals?"
+        alert.informativeText = "This forgets every Allow and Deny the model has learned from, in\n\(approvalsURL.path)"
+        alert.addButton(withTitle: "Reset")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        approvals.reset()
+        Log.info("approvals: model reset")
+        refreshMenu()
+    }
+
     @objc private func installHooks() { HookInstaller.confirmAndInstall() }
 
     @objc private func toggleDemo() {
@@ -285,6 +325,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let player: DemoPlayer
         if options.demoHTTP, case .on(let port) = serverState {
             // POST the payloads to our own server, like the hook script would.
+            // The story's scripted Allow / Deny must not train the user's approval model.
+            liveStore.learnsFromDecisions = false
             player = DemoPlayer(store: liveStore, clock: clock, mode: .live, transport: .http(port: port), model: model)
             Log.info("demo: playing the story over HTTP on port \(port)")
         } else {
@@ -311,6 +353,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func endDemo() {
         demoTask = nil
         model.forceProgress = false
+        liveStore.learnsFromDecisions = true
         if model.store !== liveStore {
             model.store = liveStore
             Log.debug("demo: back to the live store")
