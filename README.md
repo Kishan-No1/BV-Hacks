@@ -29,7 +29,8 @@ Send. It learns from your edits: add "run tests after edits" once and the next p
   counted in the menu. Rules never match compound commands, anything rated high, or anything outside the project.
 - **Learned approvals.** Nod learns your own approval habits. Every Allow or Deny you make in the notch trains a
   small on-device model (online logistic regression with AdaGrad), and later cards show what you would most likely
-  do: "Likely allow · 94%", or an amber "Unusual for you · 81% deny" when your habit and the risk level disagree.
+  do: "Likely allow · 94%", or an amber "Unusual for you · 81% deny"
+  ([screenshot](docs/design/app-request-unusual.png)) when your habit and the risk level disagree.
   The chip appears after 5 decisions and only when the model leans at least 60% one way. It is advice only: it
   never answers a request, never changes the default button, and never skips the hold on a high-risk card.
 - **Several sessions.** Requests from all sessions queue up first-in, first-out.

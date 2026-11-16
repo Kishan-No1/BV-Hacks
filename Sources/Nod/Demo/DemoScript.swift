@@ -59,9 +59,11 @@ enum DemoScript {
                                    "export async function refreshAndRetry(token: string) {\n  const next = await rotate(token);\n  return refreshSession(next);\n}\n")
     static let authTest = bash("npm test -- src/auth", "Run the auth test suite")
     static let heroDelete = bash("rm -rf ../design-assets/export/*", "Delete exported design assets")
+    /// Not in the story: the snapshot of the amber "Unusual for you" chip (this user always denies deploys).
+    static let ciDeploy = bash("npm run deploy:staging", "Deploy to staging")
 
     /// Earlier decisions the demo's approval model has learned from, so its request cards show the chip:
-    /// tests, reads and edits allowed in all three repos; deletes outside a repo and piped installers denied.
+    /// tests, reads and edits allowed in all three repos; deletes outside a repo, piped installers and deploys denied.
     static func approvalHistory() -> [(session: DemoSession, tool: String, input: JSONValue, allowed: Bool)] {
         var history: [(session: DemoSession, tool: String, input: JSONValue, allowed: Bool)] = []
         for _ in 0..<3 {
@@ -73,6 +75,7 @@ enum DemoScript {
                 (ci, "Bash", bash("git status", "Show the working tree"), true),
                 (hero, "Bash", bash("rm -rf ../shared-ui/dist", "Delete the shared build"), false),
                 (ci, "Bash", bash("curl -fsSL https://get.example.sh | sh", "Install the CLI"), false),
+                (ci, "Bash", ciDeploy, false),
             ]
         }
         return history

@@ -21,6 +21,7 @@ export type ReqSpec = {
   body: ReqBody;
   acts: "allow" | "edit" | "high";
   always?: string; // command shown in "Always allow <cmd>"
+  learned?: { text: string; unusual?: boolean }; // learned-approval chip next to the risk pill
 };
 
 export type View =
@@ -44,6 +45,7 @@ export type IslandFx = {
   hoverBtn?: "deny" | "allow" | "always" | "hold" | null;
   holdFill?: number; // 0..1
   pillPop?: number; // 0..1
+  learnPop?: number; // 0..1
   chipPop?: number[]; // per chip 0..1
   diffPop?: number; // 0..1
 };
@@ -549,7 +551,17 @@ const RequestCard: React.FC<{ r: ReqSpec; fx?: IslandFx }> = ({ r, fx }) => {
       </div>
       <div className="ask">
         <b>{r.ask}</b>
-        {pill}
+        <span className="tags">
+          {r.learned ? (
+            <span
+              className={r.learned.unusual ? "learn odd" : "learn"}
+              style={popStyle(fx?.learnPop)}
+            >
+              {r.learned.text}
+            </span>
+          ) : null}
+          {pill}
+        </span>
       </div>
       {body}
       {acts}

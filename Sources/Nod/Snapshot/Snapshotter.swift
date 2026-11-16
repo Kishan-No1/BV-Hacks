@@ -9,7 +9,7 @@ import SwiftUI
 @MainActor
 enum Snapshotter {
     static let names = ["idle", "working", "attention", "progress", "progress-done", "request-low", "request-review",
-                        "request-high", "toast-done", "toast-allowed", "toast-denied",
+                        "request-high", "request-unusual", "toast-done", "toast-allowed", "toast-denied",
                         "composer-draft", "composer-polished", "composer-error", "composer-sent"]
 
     static func run(directory: String) async -> Bool {
@@ -58,6 +58,21 @@ enum Snapshotter {
         // Progress for the finished CI session: the green Finished card.
         store.selectedSessionID = DemoScript.ci.id
         shoot("progress-done", .progress)
+
+        // The amber learned-approval chip: a request the risk engine does not rate high, which this user keeps denying.
+        store.selectedSessionID = nil
+        if let event = try? HookEvent.decode(DemoScript.permission(DemoScript.ci, "Bash", DemoScript.ciDeploy)) {
+            let held = Task { @MainActor in await store.requestDecision(for: event, timeout: 300) }
+            for _ in 0..<50 where store.pending.isEmpty { await Task.yield() }
+            if let request = store.pending.first {
+                if store.predictions[request.id]?.unusual != true { Log.info("snapshot: the deploy request has no 'Unusual' chip") }
+                shoot("request-unusual")
+                store.dismiss(request.id)
+            } else {
+                failed.append("request-unusual")
+            }
+            _ = await held.value
+        }
 
         // The prompt composer, in fixed states (no polish call, no send).
         let composer = model.composer
