@@ -7,9 +7,11 @@ final class NotchPanel: NSPanel {
     init() {
         super.init(contentRect: NSRect(origin: .zero, size: IslandGeometry.canvas),
                    styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 3)
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         isFloatingPanel = true
+        // Must come after `isFloatingPanel`: setting that resets the level to `.floating` (3), which is below the
+        // menu bar (24), so the menu bar would cover the top of the island.
+        level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 3)
         backgroundColor = .clear
         isOpaque = false
         hasShadow = false
