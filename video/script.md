@@ -1,6 +1,6 @@
-# Nod demo video: narrated script
+# notchAgent demo video: narrated script
 
-**Runtime:** 86 s · 1920×1080 · 30 fps · `out/nod-demo.mp4`
+**Runtime:** 86 s · 1920×1080 · 30 fps · `out/notch-agent-demo.mp4`
 **Voice:** one narrator, warm and unhurried, conversational. Final read: ElevenLabs, voice "Brian" (eleven_v4), first take of each line; the original macOS `say` placeholder timing is superseded.
 **Timestamps** come from the placeholder VO (`src/generated/vo-durations.json`). The whole video re-times itself when you swap in the final VO (see `README.md`), so treat these as targets, not hard cuts.
 
@@ -10,7 +10,7 @@ Each line is its own audio file, `public/vo/<id>.wav`. Keep the IDs.
 
 ## 0:00 – 0:03 · Title (no VO)
 
-**On screen:** black. The pixel Claude Code mascot pops in, then **Nod** and the tagline *"Approve your agents from the notch."* A tiny notch at the top comes alive (mascot + wave).
+**On screen:** black. The pixel Claude Code mascot pops in, then **notchAgent** and the tagline *"Approve your agents from the notch."* A tiny notch at the top comes alive (mascot + wave).
 **Music:** pad fades in.
 
 ## 0:03 – 0:16 · (a) The problem
@@ -27,10 +27,10 @@ Each line is its own audio file, `public/vo/<id>.wav`. Keep the IDs.
 
 | ID | Time | VO | Caption |
 |---|---|---|---|
-| `02a-reveal` | 0:16.2 | "Meet Nod." | Meet Nod |
+| `02a-reveal` | 0:16.2 | "Meet notchAgent." | Meet notchAgent |
 | `02b-reveal` | 0:17.2 | "It puts your agents in the MacBook notch." | Your agents, in the notch |
 
-**On screen:** the terminals shrink away into the dock and the editor is back. On "Meet Nod," the black notch springs open into the **working** island (mascot on the left, orange wave on the right) with a soft orange bloom. The camera pushes in on the notch.
+**On screen:** the terminals shrink away into the dock and the editor is back. On "Meet notchAgent," the black notch springs open into the **working** island (mascot on the left, orange wave on the right) with a soft orange bloom. The camera pushes in on the notch.
 
 ## 0:20 – 0:30 · (c) Glanceable progress on hover
 
@@ -85,9 +85,9 @@ Each line is its own audio file, `public/vo/<id>.wav`. Keep the IDs.
 
 | ID | Time | VO | Caption |
 |---|---|---|---|
-| `08a-close` | 1:11.5 | "Nod. Approve your agents from the notch." | none (end card) |
+| `08a-close` | 1:11.5 | "notchAgent. Approve your agents from the notch." | none (end card) |
 
-**On screen:** the island shows **Done ✓** as the camera pulls back to the whole MacBook screen, then a cross-fade to the end card: the mascot, **Nod**, *"Approve your agents from the notch."*, and *For Claude Code · macOS 26 · Built at BV Hacks 2026*. The music fades out.
+**On screen:** the island shows **Done ✓** as the camera pulls back to the whole MacBook screen, then a cross-fade to the end card: the mascot, **notchAgent**, *"Approve your agents from the notch."*, and *For Claude Code · macOS 26 · Built at BV Hacks 2026*. The music fades out.
 
 ---
 
@@ -95,7 +95,8 @@ Each line is its own audio file, `public/vo/<id>.wav`. Keep the IDs.
 
 - Say **"N-P-M test"** letter by letter, and **"Option-Return"** as two words.
 - 01b has two beats: a pause after "ask," then the two questions slightly faster, a little exasperated.
-- 02a "Meet Nod." is short and warm. Leave a breath after it.
+- Say the name as two words, "Notch Agent".
+- 02a "Meet notchAgent." is short and warm. Leave a breath after it.
 - 06a "Red means stop." is flat and firm, the only stern line.
-- 08a: a beat after "Nod.", then the tagline.
+- 08a: a beat after "notchAgent.", then the tagline.
 - Aim for each line within ±20% of the placeholder length so the visual beats still land. The timeline stretches to fit, but the on-screen moments are anchored to line starts.

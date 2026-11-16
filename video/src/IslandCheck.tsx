@@ -1,6 +1,6 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
-import "./nod.css";
+import "./notch-agent.css";
 import { EditorWindow, MenuBar, Sidebar } from "./components/Desktop";
 import { GlassFilter } from "./components/Icons";
 import { Island, View } from "./components/Island";

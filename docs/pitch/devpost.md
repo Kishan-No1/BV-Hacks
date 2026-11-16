@@ -1,8 +1,8 @@
-# Nod: approve your agents from the notch
+# notchAgent: approve your agents from the notch
 
-> **Tagline:** Nod puts your Claude Code agents in the MacBook notch. See what each one is doing, read a plain-English risk call on every request, and answer it with ⌥↵ without leaving your editor.
+> **Tagline:** notchAgent puts your Claude Code agents in the MacBook notch. See what each one is doing, read a plain-English risk call on every request, and answer it with ⌥↵ without leaving your editor.
 >
-> **Demo video:** `video/out/nod-demo.mp4` (76 s) · **Built with:** Swift 6, SwiftUI (Liquid Glass), AppKit, Network.framework, Claude Code hooks, bash/curl/jq, Remotion
+> **Demo video:** `video/out/notch-agent-demo.mp4` (86 s) · **Built with:** Swift 6, SwiftUI (Liquid Glass), AppKit, Network.framework, Claude Code hooks, bash/curl/jq, Remotion
 >
 ## Inspiration
 
@@ -14,24 +14,24 @@ The MacBook notch turned out to be the right place for this. It's always visible
 
 ## What it does
 
-Nod is a macOS menu-bar app that turns the notch into a control surface for every Claude Code session on your machine.
+notchAgent is a macOS menu-bar app that turns the notch into a control surface for every Claude Code session on your machine.
 
 - **Live progress, at a glance.** While any agent works, the notch shows the Claude Code mascot on one side and an animated wave on the other. Hover, and it opens into **Progress**: one avatar per session with a status dot (orange working, amber needs you, green done), the session's latest prompt (**Claude ● add token refresh to auth**), a checklist of finished steps, the current step, and a live tool card with a running timer.
-- **Approve from the notch.** Permission requests appear in the notch. **⌥↵** answers the top request from any app, and **⌥⌫** denies it. Your answer goes straight back to Claude Code. The hotkeys are registered only while a request is pending, so Nod never steals your keystrokes otherwise.
+- **Approve from the notch.** Permission requests appear in the notch. **⌥↵** answers the top request from any app, and **⌥⌫** denies it. Your answer goes straight back to Claude Code. The hotkeys are registered only while a request is pending, so notchAgent never steals your keystrokes otherwise.
 - **A plain-English risk read-out on every request.**
   - **Green · Low risk:** read-only or test/build commands inside the repo (`npm test`, `git log`, `swift build`).
   - **Amber · Review:** code edits, which git can undo, shown with the actual diff, plus installs and network fetches.
   - **Red · High risk:** irreversible or outside the project, for example *"Delete 14 files outside this repo"*. The notch glows red, the reason chips say why (*Outside the project · Not in git, can't undo · 14 files, 38 MB*), **Deny becomes the default**, and allowing takes a deliberate **0.9-second press and hold**.
 - **Many agents, one queue.** Requests from every session form a single FIFO queue. You clear them with one keystroke each.
 - **It learns how you approve.** Every Allow or Deny you make in the notch trains a small machine-learning model on your Mac. After a few decisions each card says what you would most likely do (*Likely allow · 94%*), and flags in amber when your habit and the risk level disagree (*Unusual for you · 81% deny*). It's advice only: it never answers for you and never removes the hold on a red card.
-- **Rules for the boring stuff.** *Always allow `npm test` here* creates a per-repo rule. The next matching request passes through on its own and gets counted, so you can see what Nod handled for you.
+- **Rules for the boring stuff.** *Always allow `npm test` here* creates a per-repo rule. The next matching request passes through on its own and gets counted, so you can see what notchAgent handled for you.
 - **Demo mode.** A scripted story drives the real UI through the real event path, for videos and as a live-demo backup.
 
 ## How we built it
 
-**The bridge: Claude Code hooks → curl → localhost.** Nod registers a tiny shell hook (`hooks/nod-hook.sh`) for Claude Code's hook events: SessionStart, UserPromptSubmit, Pre/PostToolUse, PermissionRequest, Notification, Stop and SessionEnd. The hook reads the event JSON on stdin and POSTs it to Nod on `127.0.0.1:47474`. For permission requests, Nod holds the HTTP response open until you decide, and the hook prints the decision JSON back to Claude Code. No compiled helper, no transcript parsing, just documented hooks. `scripts/install-hooks.sh` merges the entries into `settings.json` with `jq`. It's idempotent and writes a timestamped backup first.
+**The bridge: Claude Code hooks → curl → localhost.** notchAgent registers a tiny shell hook (`hooks/notch-agent-hook.sh`) for Claude Code's hook events: SessionStart, UserPromptSubmit, Pre/PostToolUse, PermissionRequest, Notification, Stop and SessionEnd. The hook reads the event JSON on stdin and POSTs it to notchAgent on `127.0.0.1:47474`. For permission requests, notchAgent holds the HTTP response open until you decide, and the hook prints the decision JSON back to Claude Code. No compiled helper, no transcript parsing, just documented hooks. `scripts/install-hooks.sh` merges the entries into `settings.json` with `jq`. It's idempotent and writes a timestamped backup first.
 
-**NodCore (Swift library, unit-tested, no UI):**
+**NotchAgentCore (Swift library, unit-tested, no UI):**
 - `RiskEngine`: a pure function from (tool, input, cwd) to an assessment: level, title, reason chips and diff preview. It parses the shell command and resolves its paths, and anything that reaches outside the repo is raised a level. Titles come from templates and read like a person wrote them. We deliberately didn't use an LLM here: an advisor in the approval path has to be instant, deterministic and offline.
 - `SessionStore`: sessions, steps, the request queue and the auto-allowed counter.
 - `RulesStore`: per-repo "always allow" rules, saved as JSON.
@@ -48,7 +48,7 @@ Nod is a macOS menu-bar app that turns the notch into a control surface for ever
 
 ## Challenges we ran into
 
-- **Never making things worse.** An approval tool that hangs your agent is worse than no tool. The hook uses a 0.3 s connect timeout and always exits 0. If Nod isn't running, or times out, Claude Code silently falls back to its own prompt. It fails open to *the normal prompt*, never to "allow."
+- **Never making things worse.** An approval tool that hangs your agent is worse than no tool. The hook uses a 0.3 s connect timeout and always exits 0. If notchAgent isn't running, or times out, Claude Code silently falls back to its own prompt. It fails open to *the normal prompt*, never to "allow."
 - **Holding a decision open across processes.** A permission request is an HTTP request that may wait minutes for a human, while Claude Code may cancel it or the user may answer in the terminal instead. Getting the queue, the timeouts and dropped connections right took more care than the UI did.
 - **Risk without false alarms.** If everything is red, people stop reading. The rules keep everyday requests (tests, builds, reads, edits inside the repo) green or amber, so a red card is rare enough to get attention.
 - **Hotkeys that don't hijack your keyboard.** ⌥↵ is a real key combination in some editors. We register it only while a request is waiting, and unregister it the moment the queue is empty.
@@ -58,7 +58,7 @@ Nod is a macOS menu-bar app that turns the notch into a control surface for ever
 
 - The red request. A "Delete 14 files outside this repo" card that glows red, defaults to Deny and makes you hold to allow is the moment that shows the idea.
 - Approving a request takes one keystroke, and you never leave your editor.
-- It degrades safely. When Nod is closed, Claude Code behaves exactly as before.
+- It degrades safely. When notchAgent is closed, Claude Code behaves exactly as before.
 - A risk engine covered by fixture tests whose payloads follow Claude Code's hook schema.
 - The video's UI is the real design, not a mock-up of it: the same CSS values, spring physics and glass as the prototype the app was built from.
 
@@ -71,7 +71,7 @@ Nod is a macOS menu-bar app that turns the notch into a control surface for ever
 
 ## What's next
 
-- **Nod to approve.** Approve with a nod and deny with a head shake, using the camera that's already in the notch. It was our stretch goal, and the name came from it.
+- **Nod to approve.** Approve with a nod and deny with a head shake, using the camera that's already in the notch. It was our stretch goal.
 - **More agents.** The bridge is just hooks and HTTP, so Codex, Cursor and other agents could plug in.
 - **Smarter, still local, rules.** "Allow edits under `src/` for this session," expiring rules, and a weekly summary of what was auto-allowed.
 - **Team policies.** Share rule files per repo so a team agrees on what's always safe and what always needs a human.

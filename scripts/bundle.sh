@@ -1,11 +1,11 @@
 #!/bin/bash
-# Builds Nod in release and wraps it into build/Nod.app (LSUIElement menu-bar agent, ad-hoc signed).
+# Builds notchAgent in release and wraps it into build/notchAgent.app (LSUIElement menu-bar agent, ad-hoc signed).
 #
 #   scripts/bundle.sh            # SCRATCH=.build/bundle by default
 #   SCRATCH=.build/x scripts/bundle.sh
 #
-# Idempotent: the old bundle is removed first. Copies hooks/nod-hook.sh and
-# scripts/{install-hooks.sh,uninstall-hooks.sh,nod-claude} into Contents/Resources when they exist.
+# Idempotent: the old bundle is removed first. Copies hooks/notch-agent-hook.sh and
+# scripts/{install-hooks.sh,uninstall-hooks.sh,notch-agent-claude} into Contents/Resources when they exist.
 # OWNER: workstream C (app-ui).
 set -euo pipefail
 
@@ -13,19 +13,19 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT"
 
 SCRATCH="${SCRATCH:-.build/bundle}"
-APP="$ROOT/build/Nod.app"
+APP="$ROOT/build/notchAgent.app"
 VERSION="0.1.0"
 
-echo "bundle: swift build -c release --scratch-path $SCRATCH --product Nod" >&2
-swift build -c release --scratch-path "$SCRATCH" --product Nod >&2
+echo "bundle: swift build -c release --scratch-path $SCRATCH --product notchAgent" >&2
+swift build -c release --scratch-path "$SCRATCH" --product notchAgent >&2
 BIN_DIR="$(swift build -c release --scratch-path "$SCRATCH" --show-bin-path)"
-BIN="$BIN_DIR/Nod"
+BIN="$BIN_DIR/notchAgent"
 [ -x "$BIN" ] || { echo "bundle: no binary at $BIN" >&2; exit 1; }
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/Nod"
-chmod 755 "$APP/Contents/MacOS/Nod"
+cp "$BIN" "$APP/Contents/MacOS/notchAgent"
+chmod 755 "$APP/Contents/MacOS/notchAgent"
 
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -33,13 +33,13 @@ cat > "$APP/Contents/Info.plist" <<EOF
 <plist version="1.0">
 <dict>
 	<key>CFBundleIdentifier</key>
-	<string>dev.nod.app</string>
+	<string>dev.notchagent.app</string>
 	<key>CFBundleName</key>
-	<string>Nod</string>
+	<string>notchAgent</string>
 	<key>CFBundleDisplayName</key>
-	<string>Nod</string>
+	<string>notchAgent</string>
 	<key>CFBundleExecutable</key>
-	<string>Nod</string>
+	<string>notchAgent</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -69,10 +69,10 @@ copy_resource() {
     echo "bundle: warning: $src not found, skipping" >&2
   fi
 }
-copy_resource hooks/nod-hook.sh hooks/nod-hook.sh
+copy_resource hooks/notch-agent-hook.sh hooks/notch-agent-hook.sh
 copy_resource scripts/install-hooks.sh scripts/install-hooks.sh
 copy_resource scripts/uninstall-hooks.sh scripts/uninstall-hooks.sh
-copy_resource scripts/nod-claude scripts/nod-claude
+copy_resource scripts/notch-agent-claude scripts/notch-agent-claude
 
 codesign --force --sign - "$APP" >&2
 echo "$APP"

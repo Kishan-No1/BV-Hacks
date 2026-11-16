@@ -7,5 +7,5 @@ build-tmp
 
 # Render output: keep only the final video and its review stills.
 out/*
-!out/nod-demo.mp4
+!out/notch-agent-demo.mp4
 !out/frames/

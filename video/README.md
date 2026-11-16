@@ -1,17 +1,17 @@
-# Nod demo video
+# notchAgent demo video
 
-A 76-second, 1920×1080, 30 fps demo of Nod, made with [Remotion](https://remotion.dev). The island UI is a React port of `docs/design/prototype.html`: same class names, colors, sizes and glass, and the same spring physics, driven frame by frame so every render is identical.
+A 76-second, 1920×1080, 30 fps demo of notchAgent, made with [Remotion](https://remotion.dev). The island UI is a React port of `docs/design/prototype.html`: same class names, colors, sizes and glass, and the same spring physics, driven frame by frame so every render is identical.
 
 - Narration and shot list: [`script.md`](script.md)
-- Rendered video: `out/nod-demo.mp4`, with review stills in `out/frames/`
+- Rendered video: `out/notch-agent-demo.mp4`, with review stills in `out/frames/`
 
 ## Quick start
 
 ```bash
 cd video
 npm install
-npm run dev        # Remotion Studio: scrub the timeline, open "NodDemo"
-npm run render     # -> out/nod-demo.mp4 (H.264, about 3 min on an M-series Mac)
+npm run dev        # Remotion Studio: scrub the timeline, open "NotchAgentDemo"
+npm run render     # -> out/notch-agent-demo.mp4 (H.264, about 3 min on an M-series Mac)
 npm run check      # probe + full decode + stills -> out/frames/
 ```
 
@@ -29,7 +29,7 @@ Every narration line is its own file, `public/vo/<id>.wav`. `scripts/measure-vo.
 | `src/components/Island.tsx` | the island: geometry, springs, content (Progress, request cards, toasts) |
 | `src/components/Desktop.tsx` | menu bar, sidebar, editor, the four Claude Code terminals |
 | `src/components/Overlays.tsx` | camera, cursor, ⌥↵ keycaps, captions |
-| `src/nod.css` | the prototype's CSS, ported (transitions removed, values unchanged) |
+| `src/notch-agent.css` | the prototype's CSS, ported (transitions removed, values unchanged) |
 | `src/IslandCheck.tsx` | a 1512×640 still at 1:1 for side-by-side checks against the prototype |
 
 ## Voiceover
@@ -56,7 +56,7 @@ The filenames are the contract. Keep them exactly:
 1. Generate each line from `text` in `src/data/vo-lines.json`, one file per line, using the reading notes at the bottom of `script.md`. Either export one file per line from ElevenLabs, or record one take and split it at the pauses.
 2. Convert each file to the same format, overwriting the placeholder:
    ```bash
-   for f in ~/Downloads/nod-vo/*.mp3; do
+   for f in ~/Downloads/notch-agent-vo/*.mp3; do
      id=$(basename "$f" .mp3)
      ffmpeg -y -i "$f" -af "silenceremove=start_periods=1:start_threshold=-50dB,areverse,silenceremove=start_periods=1:start_threshold=-50dB,areverse,adelay=60,apad=pad_dur=0.06,loudnorm=I=-16:TP=-1.5:LRA=11" \
        -ar 48000 -ac 1 -c:a pcm_s16le "public/vo/$id.wav"
@@ -72,7 +72,7 @@ The filenames are the contract. Keep them exactly:
 
 ## Music
 
-`npm run music` synthesizes `public/music/bed.mp3` locally with no samples and no downloads: a sine pad (Am, F, C, G) and a soft plucked arpeggio that enters around the reveal, with a little reverb. `NodDemo.tsx` mixes it at about −11 dB and ducks it by half under every VO line. To replace it, drop in any `bed.mp3` that's at least as long as the video.
+`npm run music` synthesizes `public/music/bed.mp3` locally with no samples and no downloads: a sine pad (Am, F, C, G) and a soft plucked arpeggio that enters around the reveal, with a little reverb. `NotchAgentDemo.tsx` mixes it at about −11 dB and ducks it by half under every VO line. To replace it, drop in any `bed.mp3` that's at least as long as the video.
 
 ## Fidelity checks
 

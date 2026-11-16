@@ -1,18 +1,18 @@
 #!/bin/bash
-# Plays Claude Code hook payloads into a running Nod, without Claude Code.
+# Plays Claude Code hook payloads into a running notchAgent, without Claude Code.
 #
 #   scripts/simulate.sh [--port N] [--session ID] [--fast] <fixture-name-or-path>...
 #   scripts/simulate.sh [--port N] [--session ID] [--fast] story
 #
-# A fixture name resolves to Tests/NodCoreTests/Fixtures/<name>.json. Each payload is POSTed to
-# http://127.0.0.1:<port>/hook/<hook_event_name> (port: --port, else $NOD_PORT, else 47474) and the status
-# and body are printed. A PermissionRequest blocks until it is answered in Nod and prints the decision.
+# A fixture name resolves to Tests/NotchAgentCoreTests/Fixtures/<name>.json. Each payload is POSTed to
+# http://127.0.0.1:<port>/hook/<hook_event_name> (port: --port, else $NOTCH_AGENT_PORT, else 47474) and the status
+# and body are printed. A PermissionRequest blocks until it is answered in notchAgent and prints the decision.
 # --session overrides session_id so several sessions can run side by side. --fast skips the story's pauses.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-FIXTURES="$SCRIPT_DIR/../Tests/NodCoreTests/Fixtures"
-PORT="${NOD_PORT:-47474}"
+FIXTURES="$SCRIPT_DIR/../Tests/NotchAgentCoreTests/Fixtures"
+PORT="${NOTCH_AGENT_PORT:-47474}"
 SESSION=""
 FAST=0
 
@@ -21,13 +21,13 @@ usage() {
 Usage: simulate.sh [--port N] [--session ID] [--fast] <fixture-name-or-path>...
        simulate.sh [--port N] [--session ID] [--fast] story
 
-  --port N      Nod's port (default: $NOD_PORT, else 47474)
+  --port N      notchAgent's port (default: $NOTCH_AGENT_PORT, else 47474)
   --session ID  replace session_id in every payload (simulate several sessions)
   --fast        no pauses between story steps
   story         session start, prompt, read, bash, an npm test request (blocks until answered),
                 an edit, an rm -rf request (blocks), stop
 
-Fixture names: ls Tests/NodCoreTests/Fixtures
+Fixture names: ls Tests/NotchAgentCoreTests/Fixtures
 EOF
 }
 
@@ -86,7 +86,7 @@ esac
 command -v jq >/dev/null 2>&1 || die "jq is required"
 
 BASE="http://127.0.0.1:$PORT"
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/nod-simulate.XXXXXX")"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/notch-agent-simulate.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
 pause() {
@@ -122,13 +122,13 @@ send() {
   esac
 
   if [ "$event" = "PermissionRequest" ]; then
-    printf '%-20s %-40s waiting for a decision in Nod...\n' "$event" "$name"
+    printf '%-20s %-40s waiting for a decision in notchAgent...\n' "$event" "$name"
   fi
   : >"$WORK/body"
   if ! status="$(curl -sS --noproxy '*' --connect-timeout 1 --max-time 600 \
     -H 'Content-Type: application/json' -H 'Expect:' \
     --data-binary @"$WORK/payload" -o "$WORK/body" -w '%{http_code}' "$BASE/hook/$event")"; then
-    die "could not reach Nod at $BASE (is it running? NOD_PORT=$PORT)"
+    die "could not reach notchAgent at $BASE (is it running? NOTCH_AGENT_PORT=$PORT)"
   fi
   body="$(cat "$WORK/body")"
   if [ "$event" = "PermissionRequest" ]; then
@@ -168,7 +168,7 @@ story() {
 }
 
 if ! curl -sS --noproxy '*' --connect-timeout 1 --max-time 2 -o /dev/null "$BASE/health" 2>/dev/null; then
-  die "Nod is not reachable at $BASE (start Nod, or pass --port / NOD_PORT)"
+  die "notchAgent is not reachable at $BASE (start notchAgent, or pass --port / NOTCH_AGENT_PORT)"
 fi
 
 for arg in "${ARGS[@]}"; do

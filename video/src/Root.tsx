@@ -1,14 +1,14 @@
 import React from "react";
 import { Composition, Folder } from "remotion";
-import { NodDemo } from "./NodDemo";
+import { NotchAgentDemo } from "./NotchAgentDemo";
 import { IslandCheck } from "./IslandCheck";
 import { FPS, HEIGHT, TOTAL, WIDTH } from "./timeline";
 
 export const RemotionRoot: React.FC = () => (
   <>
     <Composition
-      id="NodDemo"
-      component={NodDemo}
+      id="NotchAgentDemo"
+      component={NotchAgentDemo}
       durationInFrames={TOTAL}
       fps={FPS}
       width={WIDTH}

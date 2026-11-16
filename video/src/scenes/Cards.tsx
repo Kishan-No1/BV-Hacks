@@ -44,17 +44,17 @@ const NotchBadge: React.FC<{ frame: number; fps: number; liveAt: number }> = ({
 const Lockup: React.FC<{
   frame: number;
   fps: number;
-  nodAt: number;
+  notchAgentAt: number;
   tagAt: number;
   mascotAt: number;
-}> = ({ frame, fps, nodAt, tagAt, mascotAt }) => {
+}> = ({ frame, fps, notchAgentAt, tagAt, mascotAt }) => {
   const m = spring({
     frame: frame - mascotAt,
     fps,
     config: { damping: 11, stiffness: 160, mass: 0.8 },
   });
   const n = spring({
-    frame: frame - nodAt,
+    frame: frame - notchAgentAt,
     fps,
     config: { damping: 16, stiffness: 170 },
   });
@@ -88,7 +88,7 @@ const Lockup: React.FC<{
           transform: `translateY(${(1 - n) * 40}px)`,
         }}
       >
-        Nod
+        notchAgent
       </div>
       <div
         style={{
@@ -131,7 +131,7 @@ export const TitleCard: React.FC = () => {
           paddingTop: 30,
         }}
       >
-        <Lockup frame={frame} fps={fps} mascotAt={4} nodAt={12} tagAt={26} />
+        <Lockup frame={frame} fps={fps} mascotAt={4} notchAgentAt={12} tagAt={26} />
       </AbsoluteFill>
     </AbsoluteFill>
   );
@@ -153,7 +153,7 @@ export const EndCard: React.FC<{ tagAt?: number }> = ({ tagAt = 30 }) => {
           paddingTop: 10,
         }}
       >
-        <Lockup frame={frame} fps={fps} mascotAt={6} nodAt={12} tagAt={tagAt} />
+        <Lockup frame={frame} fps={fps} mascotAt={6} notchAgentAt={12} tagAt={tagAt} />
       </AbsoluteFill>
       <div
         style={{

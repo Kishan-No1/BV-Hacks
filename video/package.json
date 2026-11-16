@@ -1,7 +1,7 @@
 {
   "name": "video",
   "version": "1.0.0",
-  "description": "Nod demo video (Remotion): approve your Claude Code agents from the notch",
+  "description": "notchAgent demo video (Remotion): approve your Claude Code agents from the notch",
   "repository": {},
   "license": "UNLICENSED",
   "engines": {
@@ -29,7 +29,7 @@
     "vo:force": "scripts/make-vo.sh --force",
     "vo:measure": "scripts/measure-vo.sh",
     "music": "node scripts/make-music.mjs 100 16",
-    "render": "remotion render NodDemo out/nod-demo.mp4 --codec=h264 --crf=18",
+    "render": "remotion render NotchAgentDemo out/notch-agent-demo.mp4 --codec=h264 --crf=18",
     "check": "scripts/check-render.sh",
     "build": "remotion bundle",
     "upgrade": "remotion upgrade",

@@ -35,6 +35,8 @@ Approving agent requests from the notch exists already, so we compete on **judgm
 
 Working name: **Nod**. You approve with a nod.
 
+**Renamed to notchAgent** later on 2026-11-15, so the name says what it is: an agent dashboard in the notch.
+
 Stretch idea, if time allows: nod or shake your head at the camera to approve or deny.
 
 ## 4. Design iterations

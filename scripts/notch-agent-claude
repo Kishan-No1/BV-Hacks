@@ -1,0 +1,110 @@
+#!/bin/bash
+# notch-agent-claude [--name NAME] [--no-attach] [--] [claude arguments...]
+#
+# Starts `claude` in a new tmux session in the current directory and records which tmux pane runs which
+# Claude Code session, so notchAgent's prompt composer can send text to it (tmux send-keys / paste-buffer).
+# Then attaches to the session.
+#
+#   scripts/notch-agent-claude                      # tmux session "notch-agent-<folder>", then attach
+#   scripts/notch-agent-claude --name api           # tmux session "api"
+#   scripts/notch-agent-claude -- --model opus      # everything after -- goes to claude
+#   scripts/notch-agent-claude --no-attach          # start it and return
+#
+# The record is one JSON file per session in ~/Library/Application Support/notchAgent/panes/<session id>.json:
+#   session_id, pane_id, tmux_session, socket_path, server_pid, cwd, started_at
+# It is removed when the tmux session ends. Nothing else is written, and ~/.claude is never touched.
+#
+# Environment: NOTCH_AGENT_CLAUDE_BIN (the claude program), NOTCH_AGENT_PANES_DIR (where records go).
+set -uo pipefail
+
+usage() { sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+die() {
+  echo "notch-agent-claude: $1" >&2
+  exit 1
+}
+
+NAME=""
+ATTACH=1
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    --name)
+      [ $# -ge 2 ] || die "--name needs a value"
+      NAME="$2"
+      shift 2
+      ;;
+    --name=*)
+      NAME="${1#--name=}"
+      shift
+      ;;
+    --no-attach)
+      ATTACH=0
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *) break ;;
+  esac
+done
+
+command -v tmux >/dev/null 2>&1 || die "tmux is not installed (brew install tmux)"
+command -v jq >/dev/null 2>&1 || die "jq is not installed (brew install jq)"
+CLAUDE_BIN="$(command -v "${NOTCH_AGENT_CLAUDE_BIN:-claude}" 2>/dev/null)" || die "claude was not found on PATH (set NOTCH_AGENT_CLAUDE_BIN)"
+case "$CLAUDE_BIN" in
+  /*) ;;
+  *) CLAUDE_BIN="$PWD/$CLAUDE_BIN" ;;
+esac
+
+PANES_DIR="${NOTCH_AGENT_PANES_DIR:-$HOME/Library/Application Support/notchAgent/panes}"
+mkdir -p "$PANES_DIR" || die "cannot create $PANES_DIR"
+
+SID="$(uuidgen | tr 'A-Z' 'a-z')"
+[ -n "$SID" ] || die "uuidgen failed"
+
+# tmux gives "." and ":" a meaning in a target, so the session name keeps letters, digits, "_" and "-".
+[ -n "$NAME" ] || NAME="notch-agent-$(basename "$PWD")"
+NAME="$(printf '%s' "$NAME" | tr -c 'A-Za-z0-9_-' '-')"
+BASE="$NAME"
+N=2
+while tmux has-session -t "=$NAME" 2>/dev/null; do
+  NAME="$BASE-$N"
+  N=$((N + 1))
+done
+
+CREATED="$(tmux new-session -d -s "$NAME" -c "$PWD" -P -F '#{pane_id}|#{socket_path}|#{pid}' -- "$CLAUDE_BIN" --session-id "$SID" "$@")" ||
+  die "tmux could not start the session"
+PANE_ID="${CREATED%%|*}"
+REST="${CREATED#*|}"
+SOCKET_PATH="${REST%|*}"
+SERVER_PID="${REST##*|}"
+case "$PANE_ID" in
+  %[0-9]*) ;;
+  *) die "unexpected answer from tmux: $CREATED" ;;
+esac
+case "$SERVER_PID" in
+  '' | *[!0-9]*) die "unexpected answer from tmux: $CREATED" ;;
+esac
+
+RECORD="$PANES_DIR/$SID.json"
+TMP="$PANES_DIR/.$SID.json.tmp"
+jq -n --arg session_id "$SID" --arg pane_id "$PANE_ID" --arg tmux_session "$NAME" --arg socket_path "$SOCKET_PATH" \
+  --argjson server_pid "$SERVER_PID" --arg cwd "$PWD" --arg started_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{session_id: $session_id, pane_id: $pane_id, tmux_session: $tmux_session, socket_path: $socket_path,
+    server_pid: $server_pid, cwd: $cwd, started_at: $started_at}' >"$TMP" && mv "$TMP" "$RECORD" ||
+  die "cannot write $RECORD"
+
+echo "notch-agent-claude: session $NAME pane $PANE_ID (session id $SID)" >&2
+
+[ "$ATTACH" -eq 1 ] || exit 0
+if [ -n "${TMUX:-}" ]; then
+  tmux switch-client -t "=$NAME"
+else
+  tmux attach-session -t "=$NAME"
+  # Back from the session: detached (keep the record) or ended (remove it).
+  tmux has-session -t "=$NAME" 2>/dev/null || rm -f "$RECORD"
+fi

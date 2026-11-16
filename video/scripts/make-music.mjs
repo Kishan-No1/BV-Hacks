@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Synthesises a quiet, royalty-free music bed for the demo video:
 // a warm sine pad (Am - F - C - G, 4 s per chord) plus a soft plucked
-// arpeggio that enters around the "Meet Nod" reveal. No samples, no downloads.
+// arpeggio that enters around the "Meet notchAgent" reveal. No samples, no downloads.
 //
 //   node scripts/make-music.mjs [seconds=100] [arpEntersAt=16]
 //

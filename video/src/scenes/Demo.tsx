@@ -40,7 +40,7 @@ import {
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
-/** The orange bloom behind the notch when Nod comes alive. */
+/** The orange bloom behind the notch when notchAgent comes alive. */
 const RevealGlow: React.FC<{ frame: number }> = ({ frame }) => {
   const op = interpolate(
     frame,
@@ -151,7 +151,7 @@ export const Demo: React.FC = () => {
           className="screen"
           style={{
             transform: camTransform(cam),
-            borderRadius: Math.max(0.5, 16 * cam.bezel), // > 0 keeps the glass mask working (see nod.css)
+            borderRadius: Math.max(0.5, 16 * cam.bezel), // > 0 keeps the glass mask working (see notch-agent.css)
             boxShadow: `0 0 0 ${10 * cam.bezel}px #0b0b0c, 0 0 0 ${11 * cam.bezel}px #2a2a2a, 0 30px 60px rgba(0,0,0,${0.35 * cam.bezel})`,
           }}
         >

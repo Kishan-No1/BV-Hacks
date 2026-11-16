@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Verify the rendered video and pull review stills.
-#   scripts/check-render.sh [video=out/nod-demo.mp4] [timestamps...]
+#   scripts/check-render.sh [video=out/notch-agent-demo.mp4] [timestamps...]
 # Prints codec/size/duration, fully decodes the file (fails on corruption),
 # and writes PNG stills to out/frames/.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VIDEO="${1:-out/nod-demo.mp4}"
+VIDEO="${1:-out/notch-agent-demo.mp4}"
 shift || true
 TIMES=("$@")
 [[ ${#TIMES[@]} -eq 0 ]] && TIMES=(14.0 24.8 33.6 45.4 56.1 74.5)
