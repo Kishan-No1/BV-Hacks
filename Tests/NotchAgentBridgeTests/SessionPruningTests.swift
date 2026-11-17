@@ -24,10 +24,21 @@ import NotchAgentCore
         #expect(store.selectedSessionID == nil)
     }
 
+    @Test func hidesFinishedSessionsAfterIdleTimeoutEvenIfAlive() throws {
+        let clock = TestClock()
+        let store = SessionStore(now: { clock.now })
+        store.processResolver = { ProcessIdentity(pid: $0, startedAt: 1) }
+        store.ingest(try event("stop", session: "done", pid: 100))
+        store.ingest(try event("user-prompt-submit", session: "busy", pid: 200))
+        clock.advance(SessionStore.idleStaleAfter + 1)
+        store.pruneEndedSessions { _ in true }
+        #expect(store.sessions.map(\.id) == ["busy"])
+    }
+
     @Test func keepsUnknownProcessSessionsUntilStale() throws {
         let clock = TestClock()
         let store = SessionStore(now: { clock.now })
-        store.ingest(try event("stop", session: "A", pid: nil))
+        store.ingest(try event("user-prompt-submit", session: "A", pid: nil))
         store.pruneEndedSessions { _ in false }
         #expect(store.sessions.count == 1)
         clock.advance(SessionStore.unknownProcessStaleAfter + 1)

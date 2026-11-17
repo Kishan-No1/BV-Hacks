@@ -147,8 +147,13 @@ public struct Session: Identifiable, Sendable, Equatable {
     public var branch: String?            // git branch, when readable
     public var title: String?             // Claude Code session_title, when set
     public var lastPrompt: String?        // last UserPromptSubmit prompt (first line, trimmed)
-    public var status: SessionStatus
-    public var steps: [Step]              // completed steps of the current turn, oldest first
+    public var status: SessionStatus {
+        didSet { if status != .needsYou { attention = nil } }
+    }
+    /// What Claude is waiting on when it needs the user but notchAgent holds no request card
+    /// (a question, a plan, Claude Code's own permission dialog). Cleared when the status moves on.
+    public var attention: Attention?
+    public var steps: [Step]             // completed steps of the current turn, oldest first
     public var currentStep: String?       // "Editing session.ts" while a tool runs
     public var currentTool: ToolActivity?
     public var turnStartedAt: Date?
@@ -166,6 +171,51 @@ public struct Session: Identifiable, Sendable, Equatable {
 
     /// Text after "Claude ●" in the header: the last prompt, else the title, else the folder name.
     public var headline: String { lastPrompt ?? title ?? name }
+}
+
+/// Claude is waiting on the user in its own UI (notchAgent cannot answer it): the island pops a card for it.
+public struct Attention: Sendable, Equatable {
+    public enum Kind: String, Sendable { case question, plan, permission, input }
+    public var kind: Kind
+    /// One line, e.g. "Claude has a question".
+    public var title: String
+    /// The question, the start of the plan, or the notification text.
+    public var detail: String
+    /// Answer choices of a question, when it has them.
+    public var options: [String]
+    public var since: Date
+
+    public init(kind: Kind, title: String, detail: String, options: [String] = [], since: Date) {
+        self.kind = kind; self.title = title; self.detail = detail; self.options = options; self.since = since
+    }
+
+    /// For `AskUserQuestion` and `ExitPlanMode`, which notchAgent passes through to Claude Code's UI.
+    public static func passThrough(toolName: String, input: JSONValue, at t: Date) -> Attention {
+        if toolName == "ExitPlanMode" {
+            let plan = input.string("plan").map(firstLines) ?? ""
+            return Attention(kind: .plan, title: "Claude has a plan for you to approve",
+                             detail: plan.isEmpty ? "Review the plan in Claude Code." : plan, since: t)
+        }
+        var detail = "Answer in Claude Code."
+        var options: [String] = []
+        if case .array(let questions)? = input["questions"], let q = questions.first {
+            if let text = q.string("question") { detail = text }
+            if case .array(let opts)? = q["options"] {
+                options = opts.compactMap { $0.string("label") }
+            }
+            if questions.count > 1 { detail += "  (+\(questions.count - 1) more)" }
+        }
+        return Attention(kind: .question, title: "Claude has a question", detail: detail, options: options, since: t)
+    }
+
+    private static func firstLines(_ s: String) -> String {
+        let lines = s.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { $0.drop { "#*- ".contains($0) } }
+            .map(String.init)
+            .filter { !$0.isEmpty }
+        return lines.prefix(2).joined(separator: " · ")
+    }
 }
 
 /// A permission request waiting for the user. FIFO across sessions.

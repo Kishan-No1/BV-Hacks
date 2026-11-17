@@ -129,7 +129,22 @@ public final class SessionStore {
             if !hasPending(sessionID: event.sessionID) { sessions[i].status = .working }
 
         case .notification:
-            if event.notificationType == "permission_prompt" { sessions[i].status = .needsYou }
+            // Claude Code is showing its own dialog. A request card already covers a held request, and a
+            // question or plan already has its own (more detailed) attention.
+            let kind: Attention.Kind? = switch event.notificationType {
+            case "permission_prompt": .permission
+            case "elicitation_dialog": .input
+            default: nil
+            }
+            if let kind {
+                sessions[i].status = .needsYou
+                if !hasPending(sessionID: event.sessionID), sessions[i].attention == nil {
+                    sessions[i].attention = Attention(
+                        kind: kind,
+                        title: kind == .permission ? "Claude needs your permission" : "Claude needs your input",
+                        detail: event.message ?? "Answer in Claude Code.", since: t)
+                }
+            }
 
         case .stop:
             cancelPending(sessionID: event.sessionID)
@@ -160,6 +175,7 @@ public final class SessionStore {
 
         if Self.passThroughTools.contains(tool) {
             sessions[i].status = .needsYou
+            sessions[i].attention = Attention.passThrough(toolName: tool, input: input, at: t)
             return nil
         }
 
@@ -292,15 +308,22 @@ public final class SessionStore {
 
     /// Sessions with no known process are dropped after this much silence (old hook scripts, demo mode).
     public nonisolated static let unknownProcessStaleAfter: TimeInterval = 30 * 60
+    /// A finished or idle session is hidden after this much silence even when its process still runs:
+    /// the Claude desktop app keeps a process alive for every open session. Its next event brings it back.
+    public nonisolated static let idleStaleAfter: TimeInterval = 10 * 60
 
     /// Removes sessions whose Claude Code process has exited (closed terminal, quit app, crash), which
-    /// never send `SessionEnd`, and sessions with no known process that have been silent for
-    /// `unknownProcessStaleAfter`. Their held requests end with no decision.
+    /// never send `SessionEnd`; finished or idle sessions silent for `idleStaleAfter`; and sessions with
+    /// no known process silent for `unknownProcessStaleAfter`. A session waiting on the user is kept
+    /// while its process lives. Held requests of removed sessions end with no decision.
     public func pruneEndedSessions(isAlive: (ProcessIdentity) -> Bool = ProcessLiveness.isAlive) {
         let t = now()
         let ended = sessions.filter { s in
-            if let p = s.process { return !isAlive(p) }
-            return !hasPending(sessionID: s.id) && t.timeIntervalSince(s.lastEventAt) > Self.unknownProcessStaleAfter
+            if let p = s.process, !isAlive(p) { return true }
+            if hasPending(sessionID: s.id) { return false }
+            let silence = t.timeIntervalSince(s.lastEventAt)
+            if (s.status == .done || s.status == .idle), silence > Self.idleStaleAfter { return true }
+            return s.process == nil && silence > Self.unknownProcessStaleAfter
         }.map(\.id)
         guard !ended.isEmpty else { return }
         for id in ended {

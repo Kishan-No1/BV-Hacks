@@ -10,7 +10,7 @@ import SwiftUI
 enum Snapshotter {
     static let names = ["idle", "working", "attention", "progress", "progress-done", "request-low", "request-review",
                         "request-high", "request-unusual", "toast-done", "toast-allowed", "toast-denied",
-                        "composer-draft", "composer-polished", "composer-error", "composer-sent"]
+                        "composer-draft", "composer-polished", "composer-error", "composer-sent", "input-question"]
 
     static func run(directory: String) async -> Bool {
         let dir = URL(fileURLWithPath: directory, isDirectory: true)
@@ -90,6 +90,15 @@ enum Snapshotter {
                                  sentLabel: "Sent to acme-web")
         shoot("composer-sent", .composer(composer.layout))
         composer.discard()
+
+        // A question Claude asks in its own UI: the island pops the "needs your input" card.
+        let question = #"{"session_id":"\#(DemoScript.auth.id)","hook_event_name":"PermissionRequest","cwd":"\#(DemoScript.auth.cwd)","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Which database should the cache use?","options":[{"label":"Redis"},{"label":"SQLite"},{"label":"In-memory"}]}]}}"#
+        if let event = try? HookEvent.decode(Data(question.utf8)) {
+            _ = await store.requestDecision(for: event)
+            shoot("input-question")
+        } else {
+            failed.append("input-question")
+        }
 
         Log.info("snapshot: wrote \(written.count) PNGs to \(dir.path)\(failed.isEmpty ? "" : "; failed: \(failed.joined(separator: ", "))")")
         return failed.isEmpty && Set(written) == Set(names)

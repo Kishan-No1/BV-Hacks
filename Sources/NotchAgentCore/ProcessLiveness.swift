@@ -49,6 +49,17 @@ public enum ProcessLiveness {
         return nil
     }
 
+    /// The process and its ancestors, nearest first, stopping before launchd.
+    public static func ancestry(of pid: Int32, limit: Int = 12) -> [Int32] {
+        var out: [Int32] = []
+        var p = pid
+        while p > 1, out.count < limit, let i = info(p) {
+            out.append(p)
+            p = i.ppid
+        }
+        return out
+    }
+
     /// true while the exact process (same pid, same start time) is running.
     public static func isAlive(_ identity: ProcessIdentity) -> Bool {
         guard let i = info(identity.pid) else { return false }

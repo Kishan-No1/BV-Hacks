@@ -9,15 +9,26 @@ enum IslandState: Equatable {
     case attention
     case progress
     case request(PendingRequest)
+    /// Claude waits on the user in its own UI (a question, a plan, its permission dialog). Pops open.
+    case input(sessionID: String, Attention)
     case toast(Toast.Kind)
     /// The prompt composer. The user opened it, so it stays on top; a request that arrives meanwhile waits.
     case composer(ComposerLayout)
 
-    /// Priority: composer > request > toast > progress (hover) > attention > working > idle.
+    /// Priority: composer > request > input > toast > progress (hover) > attention > working > idle.
+    /// `dismissedInputs` holds `inputKey`s the user closed; those fall back to the attention dot.
     static func derive(sessions: [Session], currentRequest: PendingRequest?, visibleToast: Toast.Kind?,
-                       isHovering: Bool, forceProgress: Bool = false, composer: ComposerLayout? = nil) -> IslandState {
+                       isHovering: Bool, forceProgress: Bool = false, composer: ComposerLayout? = nil,
+                       dismissedInputs: Set<String> = []) -> IslandState {
         if let composer { return .composer(composer) }
         if let currentRequest { return .request(currentRequest) }
+        // The oldest waiting question first, like the request queue.
+        if let s = sessions
+            .filter({ $0.status == .needsYou && $0.attention != nil })
+            .filter({ !dismissedInputs.contains(inputKey(sessionID: $0.id, $0.attention!)) })
+            .min(by: { $0.attention!.since < $1.attention!.since }) {
+            return .input(sessionID: s.id, s.attention!)
+        }
         if let visibleToast { return .toast(visibleToast) }
         if (isHovering || forceProgress) && !sessions.isEmpty { return .progress }
         if sessions.contains(where: { $0.status == .needsYou }) { return .attention }
@@ -27,15 +38,20 @@ enum IslandState: Equatable {
 
     @MainActor
     static func derive(store: SessionStore, visibleToast: Toast.Kind?, isHovering: Bool, forceProgress: Bool = false,
-                       composer: ComposerLayout? = nil) -> IslandState {
+                       composer: ComposerLayout? = nil, dismissedInputs: Set<String> = []) -> IslandState {
         derive(sessions: store.sessions, currentRequest: store.currentRequest, visibleToast: visibleToast,
-               isHovering: isHovering, forceProgress: forceProgress, composer: composer)
+               isHovering: isHovering, forceProgress: forceProgress, composer: composer, dismissedInputs: dismissedInputs)
+    }
+
+    /// Identifies one wait: the same session asking again later is a new card.
+    static func inputKey(sessionID: String, _ a: Attention) -> String {
+        "\(sessionID)@\(a.since.timeIntervalSince1970)"
     }
 
     /// Progress and requests open into the big rounded island with the glass edge.
     var isExpanded: Bool {
         switch self {
-        case .progress, .request, .composer: return true
+        case .progress, .request, .composer, .input: return true
         default: return false
         }
     }
@@ -57,6 +73,7 @@ enum IslandState: Equatable {
         case .attention: return "attention"
         case .progress: return "progress"
         case .request(let r): return "request-\(r.id.uuidString)"
+        case .input(let id, let a): return "input-\(Self.inputKey(sessionID: id, a))"
         case .toast(let k): return "toast-\(k.rawValue)"
         // One identity for every layout: the card resizes, the text fields are never rebuilt.
         case .composer: return "composer"
@@ -73,6 +90,7 @@ enum IslandState: Equatable {
             case .high: level = "high"
             }
             return "request(\(level)) \(r.toolName): \(r.assessment.title)"
+        case .input(_, let a): return "input(\(a.kind.rawValue)): \(a.title)"
         case .toast(let k): return "toast(\(k.rawValue))"
         case .composer(let l): return "composer(\(l.rawValue))"
         default: return identity

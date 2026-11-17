@@ -48,6 +48,12 @@ enum IslandGeometry {
         }
     }
 
+    /// Height of the "needs your input" card: header, title, detail card, optional options row, buttons.
+    static func inputHeight(_ a: Attention, notch: NotchMetrics) -> CGFloat {
+        let base = contentTopPadding(notch: notch) + 30 + 40 + 56 + 46 + 18
+        return base + (a.options.isEmpty ? 0 : 36)
+    }
+
     static func size(for state: IslandState, notch: NotchMetrics, requestHeight: CGFloat? = nil) -> CGSize {
         switch state {
         case .idle: return CGSize(width: notch.width, height: notch.height)
@@ -55,6 +61,7 @@ enum IslandGeometry {
         case .toast(let k): return CGSize(width: notch.width + compactExtraWidth(for: k), height: notch.height)
         case .progress: return progressSize
         case .request: return CGSize(width: requestWidth, height: requestHeight ?? fallbackRequestHeight)
+        case .input(_, let a): return CGSize(width: requestWidth, height: inputHeight(a, notch: notch))
         case .composer(let layout): return CGSize(width: requestWidth, height: notch.height + layout.bodyHeight)
         }
     }

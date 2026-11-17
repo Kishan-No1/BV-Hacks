@@ -66,9 +66,35 @@ final class IslandModel {
 
     // MARK: Derivation
 
+    /// "Needs your input" cards the user closed with Dismiss (they fall back to the attention dot).
+    private(set) var dismissedInputs: Set<String> = []
+
     var derivedState: IslandState {
         IslandState.derive(store: store, visibleToast: toastClock.visible?.kind, isHovering: isHovering,
-                           forceProgress: forceProgress, composer: composer.isOpen ? composer.layout : nil)
+                           forceProgress: forceProgress, composer: composer.isOpen ? composer.layout : nil,
+                           dismissedInputs: dismissedInputs)
+    }
+
+    func dismissInput(sessionID: String, _ attention: Attention) {
+        Log.debug("action: dismiss input card")
+        dismissedInputs.insert(IslandState.inputKey(sessionID: sessionID, attention))
+        if dismissedInputs.count > 64 { dismissedInputs.removeFirst() }
+    }
+
+    /// Brings the app running the session (Terminal, iTerm, the Claude app…) to the front.
+    func openSession(_ sessionID: String) {
+        guard let pid = store.session(id: sessionID)?.process?.pid else {
+            Log.info("open session: no known process for \(sessionID)")
+            return
+        }
+        for ancestor in ProcessLiveness.ancestry(of: pid) {
+            if let app = NSRunningApplication(processIdentifier: ancestor), app.activationPolicy == .regular {
+                Log.debug("action: open session -> \(app.localizedName ?? "app")")
+                app.activate()
+                return
+            }
+        }
+        Log.info("open session: no app found above pid \(pid)")
     }
 
     /// The session Progress shows: the clicked avatar, else the one pinned when Progress opened, else the store's pick.
@@ -312,6 +338,15 @@ struct RenderMode: Equatable {
     }
 }
 
+// A plain key instead of `@Entry`: the macro needs Xcode's SwiftUI macro plugin, so the app would not
+// build with the Command Line Tools alone.
+private struct NotchAgentRenderKey: EnvironmentKey {
+    static var defaultValue: RenderMode { .live }
+}
+
 extension EnvironmentValues {
-    @Entry var notchAgentRender: RenderMode = .live
+    var notchAgentRender: RenderMode {
+        get { self[NotchAgentRenderKey.self] }
+        set { self[NotchAgentRenderKey.self] = newValue }
+    }
 }
