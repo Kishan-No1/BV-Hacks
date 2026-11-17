@@ -99,6 +99,14 @@ enum NotchAgentMain {
             return
         }
 
+        // One island only: the login item and a manual `open` must never both draw one.
+        let me = ProcessInfo.processInfo.processIdentifier
+        if let id = Bundle.main.bundleIdentifier, !options.demo,
+           NSRunningApplication.runningApplications(withBundleIdentifier: id).contains(where: { $0.processIdentifier != me }) {
+            Log.info("notchAgent is already running; exiting")
+            return
+        }
+
         if LegacyData.migrate() { Log.info("moved ~/Library/Application Support/Nod to notchAgent (the app was renamed)") }
         let controller = AppController(options: options)
         self.controller = controller
