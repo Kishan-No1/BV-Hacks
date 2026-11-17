@@ -191,7 +191,12 @@ public final class HookServer: @unchecked Sendable {
             let name = String(path.dropFirst(hookPrefix.count))
             guard !name.contains("/") else { return .respond(HTTPResponse(status: 404)) }
             do {
-                return .hook(try HookEvent.decode(request.body, fallbackEventName: name.isEmpty ? nil : name))
+                var event = try HookEvent.decode(request.body, fallbackEventName: name.isEmpty ? nil : name)
+                if let pid = request.header("x-notch-agent-pid").flatMap({ Int32($0.trimmingCharacters(in: .whitespaces)) }),
+                   pid > 1 {
+                    event.hookParentPID = pid
+                }
+                return .hook(event)
             } catch {
                 return .respond(.json(400, #"{"ok":false,"error":"undecodable hook payload"}"#))
             }

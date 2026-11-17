@@ -39,6 +39,8 @@ public final class SessionStore {
     /// false while a demo plays its scripted decisions through this store, so they never train the model.
     @ObservationIgnored public var learnsFromDecisions = true
     @ObservationIgnored private let now: () -> Date
+    /// Maps a hook's parent pid to the Claude Code process. Replaceable for tests.
+    @ObservationIgnored public var processResolver: (Int32) -> ProcessIdentity? = ProcessLiveness.claudeProcess(fromHookParent:)
     @ObservationIgnored private var waiters: [UUID: CheckedContinuation<Decision?, Never>] = [:]
 
     /// `approvals`: the learned approval model. It predicts a chip for each request and learns from each
@@ -278,8 +280,34 @@ public final class SessionStore {
             sessions[i].branch = GitInfo.branch(cwd: event.cwd)
         }
         if let title = event.sessionTitle { sessions[i].title = title }
+        // A resumed session can come back in a new Claude Code process: always follow the latest one.
+        if let ppid = event.hookParentPID, let process = processResolver(ppid) {
+            sessions[i].process = process
+        }
         sessions[i].lastEventAt = t
         return i
+    }
+
+    // MARK: Pruning
+
+    /// Sessions with no known process are dropped after this much silence (old hook scripts, demo mode).
+    public nonisolated static let unknownProcessStaleAfter: TimeInterval = 30 * 60
+
+    /// Removes sessions whose Claude Code process has exited (closed terminal, quit app, crash), which
+    /// never send `SessionEnd`, and sessions with no known process that have been silent for
+    /// `unknownProcessStaleAfter`. Their held requests end with no decision.
+    public func pruneEndedSessions(isAlive: (ProcessIdentity) -> Bool = ProcessLiveness.isAlive) {
+        let t = now()
+        let ended = sessions.filter { s in
+            if let p = s.process { return !isAlive(p) }
+            return !hasPending(sessionID: s.id) && t.timeIntervalSince(s.lastEventAt) > Self.unknownProcessStaleAfter
+        }.map(\.id)
+        guard !ended.isEmpty else { return }
+        for id in ended {
+            cancelPending(sessionID: id)
+            if selectedSessionID == id { selectedSessionID = nil }
+        }
+        sessions.removeAll { ended.contains($0.id) }
     }
 }
 

@@ -91,6 +91,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         startAutoDecideIfAsked()
         startTestComposeIfAsked()
         startServer()
+        startPruning()
         Log.info("notchAgent \(NotchAgentMain.version) running (hook port \(options.port))\(options.demo ? ", demo mode" : "")")
 
         if options.demo {
@@ -110,6 +111,18 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // MARK: Server
+
+    /// Every few seconds, drops sessions whose Claude Code process is gone so the notch only shows
+    /// agents that are still running.
+    private func startPruning() {
+        Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard let self else { return }
+                self.liveStore.pruneEndedSessions()
+            }
+        }
+    }
 
     private func startServer() {
         Task { @MainActor [weak self] in

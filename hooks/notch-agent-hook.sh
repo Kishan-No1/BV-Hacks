@@ -49,7 +49,7 @@ cat >"$WORK/in" 2>/dev/null || exit 0
 # while a foreground child runs). --noproxy: never send localhost traffic through a configured proxy.
 # 'Expect:' disables curl's 100-continue wait on large bodies.
 curl -sS --noproxy '*' --connect-timeout 0.3 --max-time "$MAX_TIME" \
-  -H 'Content-Type: application/json' -H 'Expect:' \
+  -H 'Content-Type: application/json' -H 'Expect:' -H "X-Notch-Agent-PID: $PPID" \
   --data-binary @"$WORK/in" -o "$WORK/body" -w '%{http_code}' \
   "http://127.0.0.1:$PORT/hook/$EVENT" >"$WORK/status" 2>/dev/null </dev/null &
 CURL_PID=$!

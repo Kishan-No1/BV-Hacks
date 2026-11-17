@@ -86,6 +86,10 @@ public struct HookEvent: Sendable, Equatable {
     // SessionEnd
     public var reason: String?              // clear|resume|logout|prompt_input_exit|other
 
+    /// Not in the payload: the hook script's parent pid, sent as the `X-Notch-Agent-PID` header.
+    /// Used to find the Claude Code process and drop the session once it exits.
+    public var hookParentPID: Int32?
+
     public init(sessionID: String, eventName: HookEventName, cwd: String) {
         self.sessionID = sessionID
         self.eventName = eventName

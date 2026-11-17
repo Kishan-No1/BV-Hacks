@@ -155,6 +155,9 @@ public struct Session: Identifiable, Sendable, Equatable {
     public var turnEndedAt: Date?
     public var editedFiles: [String]      // distinct file paths edited this turn
     public var lastEventAt: Date
+    /// The Claude Code process running this session, when the hook reported it. The store drops the
+    /// session once this process exits.
+    public var process: ProcessIdentity?
 
     public init(id: String, cwd: String, name: String, branch: String? = nil, status: SessionStatus = .idle, lastEventAt: Date) {
         self.id = id; self.cwd = cwd; self.name = name; self.branch = branch
