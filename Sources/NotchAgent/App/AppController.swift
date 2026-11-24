@@ -34,6 +34,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var testComposeLoop: ObservationLoop<String?>?
     private let polishItem = NSMenuItem(title: "Polish prompts with Claude Haiku", action: nil, keyEquivalent: "")
     private var activity: NSObjectProtocol?
+    private var activationObserver: NSObjectProtocol?
     private let serverItem = NSMenuItem(title: "Hook server: starting…", action: nil, keyEquivalent: "")
     private let autoItem = NSMenuItem(title: "Auto-allowed: 0", action: nil, keyEquivalent: "")
     private let learnedItem = NSMenuItem(title: "Learned from 0 decisions", action: nil, keyEquivalent: "")
@@ -65,6 +66,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.panel = panel
         model.start()
         panel.show()
+        // Switching to the app a session runs in (e.g. from an alert) puts that session's cards away.
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            let pid = app.processIdentifier
+            MainActor.assumeIsolated { self?.model.appActivated(pid: pid) }
+        }
 
         let registrar = CarbonHotkeyRegistrar()
         registrar.onPress = { [weak self] key in

@@ -155,7 +155,8 @@ final class NotchPanelController {
         let p = NSEvent.mouseLocation
         let inside = hitRect?.contains(p) ?? false
         if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
-        model.setPointerInside(inside)
+        let nearNotch = inside && IslandGeometry.hitRect(islandSize: model.size(for: .working), panelFrame: panel.frame).contains(p)
+        model.setPointerInside(inside, nearNotch: nearNotch)
     }
 }
 

@@ -204,17 +204,57 @@ final class IslandModel {
 
     // MARK: Hover
 
-    func setPointerInside(_ inside: Bool) {
-        guard inside != pointerInside else { return }
-        pointerInside = inside
+    /// `inside`: the pointer is over the island as drawn. `nearNotch`: it is over the island's collapsed
+    /// (notch-sized) shape. Hover only opens from the notch, so a card that pops open under the pointer
+    /// never turns into a Progress view that keeps itself open; once open it stays while the pointer is inside.
+    func setPointerInside(_ inside: Bool, nearNotch: Bool = true) {
+        let wanted = isHovering ? inside : (inside && nearNotch)
+        guard wanted != pointerInside else { return }
+        pointerInside = wanted
         hoverTask?.cancel()
-        guard inside != isHovering else { return }
-        let delay = inside ? HoverTiming.openDelay : HoverTiming.closeDelay
+        guard wanted != isHovering else { return }
+        let delay = wanted ? HoverTiming.openDelay : HoverTiming.closeDelay
         hoverTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            guard !Task.isCancelled, let self, self.pointerInside == inside else { return }
-            self.isHovering = inside
+            guard !Task.isCancelled, let self, self.pointerInside == wanted else { return }
+            self.isHovering = wanted
         }
+    }
+
+    /// Closes a hover-opened Progress at once; the pointer has to come back to the notch to reopen it.
+    func resetHover() {
+        hoverTask?.cancel()
+        pointerInside = false
+        isHovering = false
+    }
+
+    /// Another app came to the front. The island goes back to its resting state, and when that app is the
+    /// one running a session (the Claude app, a terminal), the user is now handling that session there:
+    /// its "needs your input" card and its request cards are put away (Claude Code shows its own prompt).
+    func appActivated(pid: pid_t) {
+        guard pid != ProcessInfo.processInfo.processIdentifier else { return }
+        resetHover()
+        for s in store.sessions {
+            guard let process = s.process, Self.hostApp(of: process.pid) == pid else { continue }
+            if let a = s.attention {
+                dismissedInputs.insert(IslandState.inputKey(sessionID: s.id, a))
+            }
+            for r in store.pending where r.sessionID == s.id {
+                Log.debug("app activated: handing \(r.toolName) back to the session's app")
+                store.dismiss(r.id)
+            }
+        }
+        if dismissedInputs.count > 64 { dismissedInputs.removeFirst() }
+    }
+
+    /// The regular (Dock) app above `pid`: the app the session runs in.
+    static func hostApp(of pid: Int32) -> pid_t? {
+        for ancestor in ProcessLiveness.ancestry(of: pid) {
+            if let app = NSRunningApplication(processIdentifier: ancestor), app.activationPolicy == .regular {
+                return app.processIdentifier
+            }
+        }
+        return nil
     }
 
     // MARK: Actions (buttons, hotkeys)
