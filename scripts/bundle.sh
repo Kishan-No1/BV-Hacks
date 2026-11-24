@@ -54,6 +54,8 @@ cat > "$APP/Contents/Info.plist" <<EOF
 	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>notchAgent reads the song position, shuffle and repeat from Spotify's web player in Chrome and presses its buttons.</string>
 </dict>
 </plist>
 EOF

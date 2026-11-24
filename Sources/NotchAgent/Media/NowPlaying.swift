@@ -3,12 +3,16 @@ import AppKit
 import Foundation
 import Observation
 
-/// What the system is playing (the "Now Playing" of Control Center: Spotify's app or web player, Apple Music,
-/// a browser tab...) and its controls.
+/// What Spotify is playing, and its controls. Spotify only: TikTok, YouTube and other apps are ignored.
 ///
-/// macOS 15.4+ only answers MediaRemote for Apple-signed clients, so a small helper library
-/// (`helpers/now-playing/NowPlayingHelper.m`, bundled as Resources/now-playing/NowPlayingHelper.dylib) runs
-/// inside `/usr/bin/perl` and talks JSON lines over a pipe. No permission prompt is involved.
+/// Two sources, in order:
+/// 1. Spotify's web player in Chrome, read from its tab (`SpotifyWebBridge`): exact, and never confused by
+///    another tab that is playing sound.
+/// 2. macOS's Now Playing (MediaRemote) when the Spotify desktop app is the player. macOS 15.4+ only answers
+///    MediaRemote for Apple-signed clients, so a small helper library (`helpers/now-playing/NowPlayingHelper.m`,
+///    bundled as Resources/now-playing/NowPlayingHelper.dylib) runs inside `/usr/bin/perl` and talks JSON lines.
+///    With Chrome's JavaScript setting off, Now Playing is also used for a Chrome player, but only while it is
+///    the Spotify tab (its title matches).
 @MainActor
 @Observable
 final class NowPlaying {
@@ -51,8 +55,28 @@ final class NowPlaying {
     @ObservationIgnored private var restarts = 0
     @ObservationIgnored private var stopped = false
     @ObservationIgnored private var loopTimer: Timer?
-    @ObservationIgnored private var rawArtwork: NSImage?
-    @ObservationIgnored private var artworkPID: pid_t = -1
+    /// The latest Now Playing report and the latest Spotify-tab reading.
+    @ObservationIgnored private var system: SystemPlayer?
+    @ObservationIgnored private var tab: SpotifyWebBridge.Result = .noTab
+    @ObservationIgnored private var tabAt: Date?
+    @ObservationIgnored private let web = SpotifyWebBridge()
+    @ObservationIgnored private var nextTabPoll = Date.distantPast
+    @ObservationIgnored private var tabPolling = false
+    @ObservationIgnored private var artworkURL: String?
+    /// Which source the player shows right now.
+    @ObservationIgnored private var mode: Mode = .none
+    private enum Mode { case none, tab, system }
+
+    /// One Now Playing report.
+    private struct SystemPlayer {
+        var title, artist, album: String
+        var duration, elapsed: TimeInterval
+        var at: Date
+        var playing: Bool
+        var repeatMode, shuffleMode: Int?
+        var bundleID: String?
+        var artwork: NSImage?
+    }
 
     // MARK: Lifecycle
 
@@ -60,7 +84,10 @@ final class NowPlaying {
         stopped = false
         launchHelper()
         loopTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.loopIfNeeded() }
+            MainActor.assumeIsolated {
+                self?.loopIfNeeded()
+                self?.pollTabIfDue()
+            }
         }
     }
 
@@ -138,7 +165,7 @@ final class NowPlaying {
         }
     }
 
-    // MARK: Reading
+    // MARK: Reading Now Playing
 
     private func receive(_ data: Data) {
         guard !data.isEmpty else { return }
@@ -153,48 +180,143 @@ final class NowPlaying {
     private func ingest(_ o: [String: Any]) {
         restarts = 0
         let pid = (o["pid"] as? NSNumber)?.int32Value ?? 0
-        if let art = o["art"] as? String {
-            rawArtwork = art.isEmpty ? nil : Data(base64Encoded: art).flatMap(NSImage.init(data:))
-            artworkPID = -1
-        }
-        // A player with no album art (a browser tab) hands over its app icon: never show that.
-        if pid > 0, pid != artworkPID {
-            artworkPID = pid
-            artwork = rawArtwork.flatMap { Self.isAppIcon($0, pid: pid) ? nil : $0 }
-        } else if pid <= 0 {
-            artwork = rawArtwork
+        var art = system?.artwork
+        if let a = o["art"] as? String {
+            art = a.isEmpty ? nil : Data(base64Encoded: a).flatMap(NSImage.init(data:))
+            // A player with no album art hands over its app icon: never show that.
+            if let image = art, pid > 0, Self.isAppIcon(image, pid: pid) { art = nil }
         }
         guard let title = o["title"] as? String, !title.isEmpty else {
-            clear()
+            system = nil
+            recompute()
             return
         }
-        let artist = o["artist"] as? String ?? ""
-        let album = o["album"] as? String ?? ""
-        let duration = (o["duration"] as? NSNumber)?.doubleValue ?? 0
-        let newTrack = Track(id: "\(title)\u{1F}\(artist)\u{1F}\(album)", name: title, artist: artist, album: album,
-                             duration: duration)
-        if track?.id != newTrack.id, !playerRepeats {
-            // A new song: notchAgent's own loop applies to the song it was turned on for only.
-            if track != nil { repeating = false }
+        system = SystemPlayer(
+            title: title, artist: o["artist"] as? String ?? "", album: o["album"] as? String ?? "",
+            duration: (o["duration"] as? NSNumber)?.doubleValue ?? 0,
+            elapsed: (o["elapsed"] as? NSNumber)?.doubleValue ?? 0,
+            at: (o["at"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) } ?? Date(),
+            playing: ((o["rate"] as? NSNumber)?.doubleValue ?? 0) > 0,
+            repeatMode: (o["repeat"] as? NSNumber)?.intValue, shuffleMode: (o["shuffle"] as? NSNumber)?.intValue,
+            bundleID: pid > 0 ? NSRunningApplication(processIdentifier: pid)?.bundleIdentifier : nil,
+            artwork: art)
+        recompute()
+    }
+
+    // MARK: Reading the Spotify tab
+
+    private func pollTabIfDue(force: Bool = false) {
+        guard !tabPolling, force || Date() >= nextTabPoll else { return }
+        guard SpotifyWebBridge.chromeRunning else {
+            if tabAt != nil || tab != .noTab { tab = .noTab; tabAt = nil; recompute() }
+            nextTabPoll = Date().addingTimeInterval(3)
+            return
         }
-        track = newTrack
-        isPlaying = ((o["rate"] as? NSNumber)?.doubleValue ?? 0) > 0
-        position = (o["elapsed"] as? NSNumber)?.doubleValue ?? 0
-        positionAt = (o["at"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) } ?? Date()
-        // MediaRemote modes: 1 = off; 2 / 3 = on (one / all).
-        if let r = (o["repeat"] as? NSNumber)?.intValue {
-            playerRepeats = true
-            repeating = r >= 2
-        } else {
-            playerRepeats = false
+        tabPolling = true
+        web.poll { [weak self] result in
+            MainActor.assumeIsolated { self?.applyTab(result) }
         }
-        if let s = (o["shuffle"] as? NSNumber)?.intValue {
-            playerShuffles = true
-            shuffling = s >= 2
-        } else {
-            playerShuffles = false
+    }
+
+    private func applyTab(_ result: SpotifyWebBridge.Result) {
+        tabPolling = false
+        let now = Date()
+        tab = result
+        tabAt = now
+        switch result {
+        case .ok, .tabOnly: nextTabPoll = now.addingTimeInterval(1)
+        case .noTab: nextTabPoll = now.addingTimeInterval(4)
+        case .denied: nextTabPoll = now.addingTimeInterval(15)
+        case .failed(let why):
+            nextTabPoll = now.addingTimeInterval(4)
+            Log.info("spotify web: \(why)")
         }
+        recompute()
+    }
+
+    private var tabFresh: Bool { tabAt.map { Date().timeIntervalSince($0) < 4 } ?? false }
+
+    // MARK: Choosing what to show
+
+    /// Spotify only: the tab when it answers, else the Spotify app (or, with Chrome's JavaScript setting off, a
+    /// Chrome player whose title matches the Spotify tab). Anything else clears the player.
+    private func recompute() {
+        if tabFresh, case .ok(let s) = tab {
+            showTab(s)
+            return
+        }
+        if let sys = system, isSpotify(sys) {
+            showSystem(sys)
+            return
+        }
+        mode = .none
+        clear()
+        problem = Self.hint(for: tab)
+    }
+
+    private func isSpotify(_ sys: SystemPlayer) -> Bool {
+        if sys.bundleID == "com.spotify.client" { return true }
+        // With only the tab title ("Song • Artist"), accept Chrome's player when it is that song.
+        if sys.bundleID == SpotifyWebBridge.chromeBundleID, tabFresh, case .tabOnly(let title) = tab {
+            return title.localizedCaseInsensitiveContains(sys.title)
+        }
+        return false
+    }
+
+    private static func hint(for tab: SpotifyWebBridge.Result) -> String? {
+        switch tab {
+        case .tabOnly: return "For exact sync: Chrome › View › Developer › Allow JavaScript from Apple Events"
+        case .denied: return "Allow notchAgent to control Chrome: System Settings › Privacy & Security › Automation"
+        default: return nil
+        }
+    }
+
+    private func showTab(_ s: SpotifyWebBridge.State) {
+        mode = .tab
+        let id = "\(s.title)\u{1F}\(s.artist)\u{1F}\(s.album)"
+        let duration = s.duration > 0 ? s.duration : (track?.id == id ? track?.duration ?? 0 : 0)
+        track = Track(id: id, name: s.title, artist: s.artist, album: s.album, duration: duration)
+        isPlaying = s.playing
+        // Keep the local clock when the tab agrees within a second, so the bar does not stutter.
+        let now = Date()
+        if abs(position(at: now) - s.position) > 1.0 || !s.playing {
+            position = s.position
+            positionAt = now
+        }
+        shuffling = s.shuffle
+        repeating = s.repeating
+        playerRepeats = true
+        playerShuffles = true
         problem = nil
+        loadArtwork(s.artworkURL)
+    }
+
+    private func showSystem(_ sys: SystemPlayer) {
+        let id = "\(sys.title)\u{1F}\(sys.artist)\u{1F}\(sys.album)"
+        if mode == .system, track?.id != id, sys.repeatMode == nil, track != nil {
+            repeating = false  // notchAgent's own loop covers only the song it was turned on for
+        }
+        mode = .system
+        track = Track(id: id, name: sys.title, artist: sys.artist, album: sys.album, duration: sys.duration)
+        isPlaying = sys.playing
+        position = sys.elapsed
+        positionAt = sys.at
+        if let r = sys.repeatMode { playerRepeats = true; repeating = r >= 2 } else { playerRepeats = false }
+        if let s = sys.shuffleMode { playerShuffles = true; shuffling = s >= 2 } else { playerShuffles = false }
+        artworkURL = nil
+        artwork = sys.artwork
+        problem = Self.hint(for: tab)
+    }
+
+    private func loadArtwork(_ urlString: String) {
+        guard urlString != artworkURL else { return }
+        artworkURL = urlString
+        guard let url = URL(string: urlString), url.scheme == "https" else { artwork = nil; return }
+        Task { [weak self] in
+            let data = try? await URLSession.shared.data(from: url).0
+            guard let self, self.artworkURL == urlString else { return }
+            self.artwork = data.flatMap(NSImage.init(data:))
+        }
     }
 
     /// True when `art` is just the player app's icon (Chrome's logo and the like): compared at 16 x 16 over the
@@ -228,9 +350,9 @@ final class NowPlaying {
         track = nil
         isPlaying = false
         artwork = nil
-        rawArtwork = nil
-        artworkPID = -1
+        artworkURL = nil
         repeating = false
+        shuffling = false
     }
 
     // MARK: Controls
@@ -240,22 +362,30 @@ final class NowPlaying {
         position = position(at: now)
         positionAt = now
         isPlaying.toggle()
-        send("toggle")
+        control(.playPause, system: "toggle")
     }
 
-    func next() { send("next") }
-    func previous() { send("prev") }
+    func next() { control(.next, system: "next") }
+    func previous() { control(.previous, system: "prev") }
 
     func toggleRepeat() {
         repeating.toggle()
-        if playerRepeats { send("repeat") }
+        if mode == .tab {
+            control(.repeating, system: nil)
+        } else if playerRepeats {
+            send("repeat")
+        }
     }
 
     func toggleShuffle() {
         shuffling.toggle()
-        // Web players do not take shuffle through Now Playing; the green state then only reflects the click.
+        if mode == .tab {
+            control(.shuffle, system: nil)
+            return
+        }
         send("shuffle")
         if !playerShuffles {
+            // The player does not take shuffle this way; drop the green state again.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 MainActor.assumeIsolated {
                     guard let self, !self.playerShuffles else { return }
@@ -274,11 +404,29 @@ final class NowPlaying {
         position = seconds
         positionAt = Date()
         send("seek \(seconds)")
+        if mode == .tab { refreshTabSoon(0.5) }
     }
 
-    /// notchAgent's own loop (players that do not report repeat): back to the start just before the end.
+    /// Presses the tab's own button when the tab is the source; otherwise sends the Now Playing command.
+    private func control(_ button: SpotifyWebBridge.Button, system command: String?) {
+        if mode == .tab {
+            web.press(button) { [weak self] in
+                MainActor.assumeIsolated { self?.refreshTabSoon(0.3) }
+            }
+        } else if let command {
+            send(command)
+        }
+    }
+
+    private func refreshTabSoon(_ delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            MainActor.assumeIsolated { self?.pollTabIfDue(force: true) }
+        }
+    }
+
+    /// notchAgent's own loop (a player that does not report repeat): back to the start just before the end.
     private func loopIfNeeded() {
-        guard repeating, !playerRepeats, isPlaying, let d = track?.duration, d > 3 else { return }
+        guard mode == .system, repeating, !playerRepeats, isPlaying, let d = track?.duration, d > 3 else { return }
         if d - position(at: Date()) < 1.2 { seek(to: 0) }
     }
 
