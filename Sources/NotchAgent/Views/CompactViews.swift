@@ -52,6 +52,7 @@ struct AnimationClock<Content: View>: View {
 
 /// The 4-bar wave: `@keyframes wave { 0%,100% { height:4px } 50% { height:13px } }`, 1 s, staggered.
 struct Wave: View {
+    var color: Color = Theme.orange
     static let delays: [Double] = [0.15, 0.55, 0.3, 0.75]
 
     static func height(bar: Int, time: Double) -> CGFloat {
@@ -65,7 +66,7 @@ struct Wave: View {
             HStack(spacing: 2.5) {
                 ForEach(0..<4, id: \.self) { i in
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(Theme.orange)
+                        .fill(color)
                         .frame(width: 3, height: Self.height(bar: i, time: t))
                 }
             }

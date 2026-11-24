@@ -69,6 +69,11 @@ copy_resource() {
     echo "bundle: warning: $src not found, skipping" >&2
   fi
 }
+# The Now Playing helper (see helpers/now-playing/NowPlayingHelper.m): built with the Command Line Tools' clang.
+mkdir -p "$APP/Contents/Resources/now-playing"
+clang -dynamiclib -fobjc-arc -O2 -framework Foundation "$ROOT/helpers/now-playing/NowPlayingHelper.m" \
+  -o "$APP/Contents/Resources/now-playing/NowPlayingHelper.dylib" >&2
+
 copy_resource hooks/notch-agent-hook.sh hooks/notch-agent-hook.sh
 copy_resource scripts/install-hooks.sh scripts/install-hooks.sh
 copy_resource scripts/uninstall-hooks.sh scripts/uninstall-hooks.sh

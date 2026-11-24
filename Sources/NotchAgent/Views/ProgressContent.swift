@@ -8,17 +8,19 @@ struct ProgressContent: View {
     let model: IslandModel
 
     var body: some View {
+        if model.nowPlaying.isActive {
+            split
+        } else {
+            claudeOnly
+        }
+    }
+
+    private var claudeOnly: some View {
         let store = model.store
         let session = model.progressSession
-        VStack(alignment: .leading, spacing: 0) {
+        return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 0) {
-                HStack(spacing: 9) {
-                    StrokeIcon(shape: ListShape(), size: 17, color: Theme.ink2)
-                    Text("Progress")
-                        .font(Theme.font(14.5, .semibold))
-                        .tracking(Theme.em(-0.01, 14.5))
-                        .foregroundStyle(Theme.ink2)
-                }
+                header
                 Spacer(minLength: 12)
                 HStack(spacing: 16) {
                     AvatarRow(sessions: store.sessions, ringID: session?.id) { id in
@@ -48,15 +50,72 @@ struct ProgressContent: View {
         .padding(.horizontal, 24)
         .frame(width: IslandGeometry.progressSize.width, height: IslandGeometry.progressSize.height, alignment: .top)
         // "the step list fades under the bottom edge"
-        .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.8),
-                                     .init(color: .black.opacity(0.35), location: 1)],
-                             startPoint: .top, endPoint: .bottom))
+        .mask(Self.fade)
     }
+
+    /// Media playing: the player on the left, Claude's steps on their own glass card on the right.
+    private var split: some View {
+        let store = model.store
+        let session = model.progressSession
+        let size = IslandGeometry.splitProgressSize
+        let top = IslandGeometry.contentTopPadding(notch: model.notch)
+        return HStack(alignment: .top, spacing: 14) {
+            MediaCard(media: model.nowPlaying, glow: model)
+                .frame(width: 344)
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 0) {
+                    header(Theme.Vibe.label)
+                    Spacer(minLength: 10)
+                    AvatarRow(sessions: Array(store.sessions.prefix(4)), ringID: session?.id) { id in
+                        model.avatarClicked(id)
+                    }
+                }
+                .frame(height: 30)
+                if let session {
+                    WhoLine(headline: "", clawd: 22, nameStyle: AnyShapeStyle(Theme.Vibe.claudeName))
+                        .padding(.top, 8)
+                        .padding(.bottom, 6)
+                        .id(session.id)
+                    StepList(session: session, textColor: Theme.Vibe.step, currentColor: Theme.Vibe.stepCurrent)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .mask(Self.fade)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .background(GlowCard(model: model, radius: 22, hueBase: 14, hueSpread: 36))
+        }
+        .padding(.top, top - 4)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
+        .frame(width: size.width, height: size.height, alignment: .top)
+    }
+
+    private var header: some View { header(Theme.ink2) }
+
+    private func header(_ color: Color) -> some View {
+        HStack(spacing: 9) {
+            StrokeIcon(shape: ListShape(), size: 17, color: color)
+            Text("Progress")
+                .font(Theme.font(14.5, .semibold))
+                .tracking(Theme.em(-0.01, 14.5))
+                .foregroundStyle(color)
+        }
+    }
+
+    private static let fade = LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.8),
+                                                     .init(color: .black.opacity(0.35), location: 1)],
+                                             startPoint: .top, endPoint: .bottom)
 }
 
 /// `.steps`: orange checks for completed steps, the current step dimmed with a play icon.
 struct StepList: View {
     let session: Session
+    var textColor: Color = .white.opacity(0.93)
+    var currentColor: Color = .white.opacity(0.55)
     @Environment(\.notchAgentRender) private var render
     @State private var shown = false
 
@@ -101,7 +160,7 @@ struct StepList: View {
                     .frame(width: 14, height: 14)
                     InlineCodeText(text: row.text, font: Theme.font(14, .semibold), codeFont: Theme.mono(12.5, .semibold),
                                    tracking: Theme.em(-0.012, 14))
-                        .foregroundStyle(row.isCurrent ? Color.white.opacity(0.55) : Color.white.opacity(0.93))
+                        .foregroundStyle(row.isCurrent ? currentColor : textColor)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }

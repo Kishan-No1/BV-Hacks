@@ -35,6 +35,10 @@ enum IslandGeometry {
     static let expandedRadius: CGFloat = 34
     static let compactRadius: CGFloat = 10
     static let progressSize = CGSize(width: 600, height: 256)
+    /// Progress with Spotify active: Claude on the left half, the player on the right.
+    static let splitProgressSize = CGSize(width: 730, height: 282)
+    /// The player alone (hover with no Claude session).
+    static let mediaSize = CGSize(width: 440, height: 246)
     static let requestWidth: CGFloat = 560
     /// Used until a request card has been measured.
     static let fallbackRequestHeight: CGFloat = 236
@@ -54,12 +58,13 @@ enum IslandGeometry {
         return base + (a.options.isEmpty ? 0 : 36)
     }
 
-    static func size(for state: IslandState, notch: NotchMetrics, requestHeight: CGFloat? = nil) -> CGSize {
+    static func size(for state: IslandState, notch: NotchMetrics, requestHeight: CGFloat? = nil, split: Bool = false) -> CGSize {
         switch state {
         case .idle: return CGSize(width: notch.width, height: notch.height)
-        case .working, .attention: return CGSize(width: notch.width + 87, height: notch.height)
+        case .working, .attention, .nowPlaying: return CGSize(width: notch.width + 87, height: notch.height)
         case .toast(let k): return CGSize(width: notch.width + compactExtraWidth(for: k), height: notch.height)
-        case .progress: return progressSize
+        case .progress: return split ? splitProgressSize : progressSize
+        case .media: return mediaSize
         case .request: return CGSize(width: requestWidth, height: requestHeight ?? fallbackRequestHeight)
         case .input(_, let a): return CGSize(width: requestWidth, height: inputHeight(a, notch: notch))
         case .composer(let layout): return CGSize(width: requestWidth, height: notch.height + layout.bodyHeight)
@@ -97,7 +102,8 @@ enum IslandMotion: Equatable {
 
     var animation: Animation {
         switch self {
-        case .open: return .spring(response: 0.5, dampingFraction: 0.8)
+        // A little overshoot: the island lands like jelly (the wobble itself is `Jelly`).
+        case .open: return .spring(response: 0.52, dampingFraction: 0.68)
         case .nudge: return .spring(response: 0.42, dampingFraction: 0.7)
         case .close: return .spring(response: 0.38, dampingFraction: 1.0)
         }

@@ -10,7 +10,8 @@ import SwiftUI
 enum Snapshotter {
     static let names = ["idle", "working", "attention", "progress", "progress-done", "request-low", "request-review",
                         "request-high", "request-unusual", "toast-done", "toast-allowed", "toast-denied",
-                        "composer-draft", "composer-polished", "composer-error", "composer-sent", "input-question"]
+                        "composer-draft", "composer-polished", "composer-error", "composer-sent", "input-question",
+                        "now-playing", "media", "progress-media"]
 
     static func run(directory: String) async -> Bool {
         let dir = URL(fileURLWithPath: directory, isDirectory: true)
@@ -99,6 +100,18 @@ enum Snapshotter {
         } else {
             failed.append("input-question")
         }
+
+        // Spotify: the collapsed wave, the player alone, and Progress split with the player.
+        model.nowPlaying.showForSnapshot(.init(id: "snap", name: "High Hopes", artist: "David Gilmour",
+                                               album: "Live at Pompeii", duration: 571),
+                                         playing: true, position: 32, at: clock.now(), repeating: true)
+        shoot("now-playing", .nowPlaying)
+        shoot("media", .media)
+        store.selectedSessionID = DemoScript.auth.id
+        // The pointer between the two cards' top edges, so both border glows show.
+        model.setPointer(CGPoint(x: 392, y: 46))
+        shoot("progress-media", .progress)
+        model.setPointer(nil)
 
         Log.info("snapshot: wrote \(written.count) PNGs to \(dir.path)\(failed.isEmpty ? "" : "; failed: \(failed.joined(separator: ", "))")")
         return failed.isEmpty && Set(written) == Set(names)

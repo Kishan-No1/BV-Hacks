@@ -147,7 +147,7 @@ final class NotchPanelController {
 
     /// The island's clickable rect in screen coordinates, or nil when there is nothing to interact with.
     var hitRect: CGRect? {
-        if model.displayedState == .idle && model.store.sessions.isEmpty { return nil }
+        if model.displayedState == .idle && model.store.sessions.isEmpty && !model.nowPlaying.isActive { return nil }
         return IslandGeometry.hitRect(islandSize: model.displayedSize, panelFrame: panel.frame)
     }
 
@@ -157,6 +157,7 @@ final class NotchPanelController {
         if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
         let nearNotch = inside && IslandGeometry.hitRect(islandSize: model.size(for: .working), panelFrame: panel.frame).contains(p)
         model.setPointerInside(inside, nearNotch: nearNotch)
+        model.setPointer(inside ? CGPoint(x: p.x - panel.frame.minX, y: panel.frame.maxY - p.y) : nil)
     }
 }
 

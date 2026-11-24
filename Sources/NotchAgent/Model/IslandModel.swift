@@ -21,12 +21,20 @@ final class IslandModel {
     /// The prompt composer (rough text -> polish -> edit -> send). Inert until the app wires real services in.
     let composer = ComposerModel()
 
+    /// What Spotify is playing. Inert until `nowPlaying.start()` (the live app only).
+    let nowPlaying = NowPlaying()
+
     var notch: NotchMetrics = .simulated
     /// The state on screen. Changes are applied with the open / nudge / close springs.
     private(set) var displayedState: IslandState = .idle
     private(set) var toastClock = ToastClock()
     /// Pointer inside the island's shape (raw, from the panel's mouse tracking).
     private(set) var pointerInside = false
+    /// The pointer in canvas coordinates (top-left origin) while it is over the island; drives the cards' glow.
+    private(set) var pointer: CGPoint?
+    /// Bumped to play the jelly wobble: when the island opens, and when the pointer arrives on it.
+    private(set) var jellyTick = 0
+    @ObservationIgnored private var rawInside = false
     /// Debounced hover: true 120 ms after the pointer enters, false 220 ms after it leaves.
     private(set) var isHovering = false
     /// Demo mode opens Progress during the story's 'progress' beat.
@@ -72,7 +80,8 @@ final class IslandModel {
     var derivedState: IslandState {
         IslandState.derive(store: store, visibleToast: toastClock.visible?.kind, isHovering: isHovering,
                            forceProgress: forceProgress, composer: composer.isOpen ? composer.layout : nil,
-                           dismissedInputs: dismissedInputs)
+                           dismissedInputs: dismissedInputs, mediaActive: nowPlaying.isActive,
+                           mediaPlaying: nowPlaying.isPlaying)
     }
 
     func dismissInput(sessionID: String, _ attention: Attention) {
@@ -108,7 +117,7 @@ final class IslandModel {
         if case .request(let r) = state {
             return IslandGeometry.size(for: state, notch: notch, requestHeight: requestHeights[r.id])
         }
-        return IslandGeometry.size(for: state, notch: notch)
+        return IslandGeometry.size(for: state, notch: notch, split: nowPlaying.isActive)
     }
 
     var displayedSize: CGSize { size(for: displayedState) }
@@ -144,12 +153,14 @@ final class IslandModel {
             shownRequest = nil
         }
         let old = displayedState
+        if (state == .progress || state == .media) && renderMode.animated && old != state { nowPlaying.refreshIfRunning() }
         if state == .progress, old != .progress {
             pinnedProgressSessionID = store.selectedSessionID == nil ? store.activeSession?.id : nil
         } else if state != .progress {
             pinnedProgressSessionID = nil
         }
         let motion = IslandMotion.kind(from: old, to: state, fromSize: size(for: old), toSize: size(for: state))
+        if state.isExpanded && !old.isExpanded && renderMode.animated { jellyTick &+= 1 }
         if animated && renderMode.animated {
             withAnimation(motion.animation) { displayedState = state }
         } else {
@@ -208,6 +219,8 @@ final class IslandModel {
     /// (notch-sized) shape. Hover only opens from the notch, so a card that pops open under the pointer
     /// never turns into a Progress view that keeps itself open; once open it stays while the pointer is inside.
     func setPointerInside(_ inside: Bool, nearNotch: Bool = true) {
+        if inside && !rawInside && renderMode.animated { jellyTick &+= 1 }
+        rawInside = inside
         let wanted = isHovering ? inside : (inside && nearNotch)
         guard wanted != pointerInside else { return }
         pointerInside = wanted
@@ -219,6 +232,13 @@ final class IslandModel {
             guard !Task.isCancelled, let self, self.pointerInside == wanted else { return }
             self.isHovering = wanted
         }
+    }
+
+    /// The pointer over the island, in canvas coordinates; nil when it is elsewhere.
+    func setPointer(_ p: CGPoint?) {
+        if let p, let old = pointer, abs(p.x - old.x) < 0.5, abs(p.y - old.y) < 0.5 { return }
+        if p == nil, pointer == nil { return }
+        pointer = p
     }
 
     /// Closes a hover-opened Progress at once; the pointer has to come back to the notch to reopen it.

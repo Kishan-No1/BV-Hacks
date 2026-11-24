@@ -54,9 +54,47 @@ struct IslandCanvas: View {
         ZStack(alignment: .top) {
             IslandGlow(risk: state.glowRisk, expanded: state.isExpanded, size: size, radius: radius)
             IslandBody(model: model, state: state, size: size, radius: radius)
+                .jelly(trigger: model.jellyTick)
         }
         .frame(width: IslandGeometry.canvas.width, height: IslandGeometry.canvas.height, alignment: .top)
+        .coordinateSpace(.named(Self.space))
     }
+
+    /// The canvas coordinate space (top-left origin), the same one as `IslandModel.pointer`.
+    static let space = "island-canvas"
+}
+
+/// The jelly wobble: a quick squash and stretch that settles, anchored at the top edge so the island
+/// never leaves the notch.
+struct Jelly: ViewModifier {
+    let trigger: Int
+
+    struct Scale { var x: CGFloat = 1; var y: CGFloat = 1 }
+
+    func body(content: Content) -> some View {
+        content.keyframeAnimator(initialValue: Scale(), trigger: trigger) { view, s in
+            view.scaleEffect(x: s.x, y: s.y, anchor: .top)
+        } keyframes: { _ in
+            KeyframeTrack(\.x) {
+                CubicKeyframe(1.045, duration: 0.11)
+                CubicKeyframe(0.972, duration: 0.13)
+                CubicKeyframe(1.016, duration: 0.13)
+                CubicKeyframe(0.994, duration: 0.12)
+                CubicKeyframe(1.0, duration: 0.14)
+            }
+            KeyframeTrack(\.y) {
+                CubicKeyframe(0.94, duration: 0.11)
+                CubicKeyframe(1.035, duration: 0.13)
+                CubicKeyframe(0.985, duration: 0.13)
+                CubicKeyframe(1.006, duration: 0.12)
+                CubicKeyframe(1.0, duration: 0.14)
+            }
+        }
+    }
+}
+
+extension View {
+    func jelly(trigger: Int) -> some View { modifier(Jelly(trigger: trigger)) }
 }
 
 struct IslandBody: View {
@@ -68,11 +106,23 @@ struct IslandBody: View {
     var body: some View {
         let expanded = state.isExpanded
         let shape = IslandShape(radius: radius)
+        let player = state == .media || (state == .progress && model.nowPlaying.isActive)
         ZStack(alignment: .top) {
             IslandBackground(expanded: expanded, height: size.height, radius: radius)
+            if player {
+                // The data-rain field replaces the black behind the panels.
+                DataRainView(model: model, size: size)
+                    .clipShape(shape)
+                    .transition(.opacity)
+            }
+            // Over the data rain the frosted bottom edge would grey it out; the glass rim draws the edge instead.
             GlassEdge(risk: state.glowRisk, radius: radius)
-                .opacity(expanded ? 1 : 0)
-                .zIndex(state.glassOverContent ? 3 : 1)
+                .opacity(expanded && !player ? 1 : 0)
+                // The player's buttons sit above the glass; Claude's step list slides under it.
+                .zIndex(state.glassOverContent && !player ? 3 : 1)
+            if player {
+                GlassRim(radius: radius).zIndex(4)
+            }
             ZStack(alignment: .top) {
                 IslandContent(model: model, state: state)
                     .frame(width: size.width, height: size.height, alignment: .top)
@@ -278,6 +328,10 @@ struct IslandContent: View {
             InputContent(model: model, sessionID: sessionID, attention: attention)
         case .composer:
             ComposerContent(model: model)
+        case .nowPlaying:
+            CompactNowPlaying(media: model.nowPlaying)
+        case .media:
+            MediaContent(model: model)
         }
     }
 }

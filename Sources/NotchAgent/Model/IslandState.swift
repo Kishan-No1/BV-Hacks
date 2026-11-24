@@ -14,12 +14,17 @@ enum IslandState: Equatable {
     case toast(Toast.Kind)
     /// The prompt composer. The user opened it, so it stays on top; a request that arrives meanwhile waits.
     case composer(ComposerLayout)
+    /// Collapsed: Spotify is playing and Claude is quiet (album art + a green wave).
+    case nowPlaying
+    /// Hover with Spotify active and no Claude session: the player alone.
+    case media
 
-    /// Priority: composer > request > input > toast > progress (hover) > attention > working > idle.
+    /// Priority: composer > request > input > toast > progress/media (hover) > attention > working > nowPlaying > idle.
     /// `dismissedInputs` holds `inputKey`s the user closed; those fall back to the attention dot.
     static func derive(sessions: [Session], currentRequest: PendingRequest?, visibleToast: Toast.Kind?,
                        isHovering: Bool, forceProgress: Bool = false, composer: ComposerLayout? = nil,
-                       dismissedInputs: Set<String> = []) -> IslandState {
+                       dismissedInputs: Set<String> = [], mediaActive: Bool = false,
+                       mediaPlaying: Bool = false) -> IslandState {
         if let composer { return .composer(composer) }
         if let currentRequest { return .request(currentRequest) }
         // The oldest waiting question first, like the request queue.
@@ -30,17 +35,24 @@ enum IslandState: Equatable {
             return .input(sessionID: s.id, s.attention!)
         }
         if let visibleToast { return .toast(visibleToast) }
-        if (isHovering || forceProgress) && !sessions.isEmpty { return .progress }
+        if isHovering || forceProgress {
+            // With Spotify active, Progress splits: Claude on the left, the player on the right.
+            if !sessions.isEmpty { return .progress }
+            if mediaActive { return .media }
+        }
         if sessions.contains(where: { $0.status == .needsYou }) { return .attention }
         if sessions.contains(where: { $0.status == .working }) { return .working }
+        if mediaPlaying { return .nowPlaying }
         return .idle
     }
 
     @MainActor
     static func derive(store: SessionStore, visibleToast: Toast.Kind?, isHovering: Bool, forceProgress: Bool = false,
-                       composer: ComposerLayout? = nil, dismissedInputs: Set<String> = []) -> IslandState {
+                       composer: ComposerLayout? = nil, dismissedInputs: Set<String> = [],
+                       mediaActive: Bool = false, mediaPlaying: Bool = false) -> IslandState {
         derive(sessions: store.sessions, currentRequest: store.currentRequest, visibleToast: visibleToast,
-               isHovering: isHovering, forceProgress: forceProgress, composer: composer, dismissedInputs: dismissedInputs)
+               isHovering: isHovering, forceProgress: forceProgress, composer: composer, dismissedInputs: dismissedInputs,
+               mediaActive: mediaActive, mediaPlaying: mediaPlaying)
     }
 
     /// Identifies one wait: the same session asking again later is a new card.
@@ -51,7 +63,7 @@ enum IslandState: Equatable {
     /// Progress and requests open into the big rounded island with the glass edge.
     var isExpanded: Bool {
         switch self {
-        case .progress, .request, .composer, .input: return true
+        case .progress, .request, .composer, .input, .media: return true
         default: return false
         }
     }
@@ -77,6 +89,8 @@ enum IslandState: Equatable {
         case .toast(let k): return "toast-\(k.rawValue)"
         // One identity for every layout: the card resizes, the text fields are never rebuilt.
         case .composer: return "composer"
+        case .nowPlaying: return "now-playing"
+        case .media: return "media"
         }
     }
 

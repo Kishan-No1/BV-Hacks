@@ -14,6 +14,24 @@ enum Theme {
     static let ink3 = Color.white.opacity(0.32)
     static let card = Color.white.opacity(0.055)
 
+    /// Text colors for the panels over the data rain: warm on Claude's card, cool on the player.
+    enum Vibe {
+        static let claudeName = LinearGradient(colors: [Color(hex: 0xFFC49B), Color(hex: 0xFF7FB0)],
+                                               startPoint: .leading, endPoint: .trailing)
+        static let step = Color(hex: 0xFFE6D8).opacity(0.94)
+        static let stepCurrent = Color(hex: 0xFFB8D2).opacity(0.62)
+        static let label = Color(hex: 0xB9A8FF).opacity(0.85)
+        static let songTitle = LinearGradient(colors: [Color(hex: 0xB8FFD9), Color(hex: 0x7FE9FF)],
+                                              startPoint: .leading, endPoint: .trailing)
+        /// "Album:" and the artist: lavender into rain pink.
+        static let lavenderGlow = LinearGradient(colors: [Color(hex: 0xC9B8FF), Color(hex: 0xFF9AD5)],
+                                                 startPoint: .leading, endPoint: .trailing)
+        /// The album name: green into rain cyan.
+        static let albumName = LinearGradient(colors: [Color(hex: 0x5CFF9D), Color(hex: 0x22E6FF)],
+                                              startPoint: .leading, endPoint: .trailing)
+        static let time = Color(hex: 0xA9E8F2).opacity(0.7)
+    }
+
     /// system-ui (SF Pro).
     static func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight)

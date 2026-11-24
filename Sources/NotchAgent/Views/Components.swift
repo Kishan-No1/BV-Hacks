@@ -6,6 +6,8 @@ import SwiftUI
 struct WhoLine: View {
     let headline: String
     var clawd: CGFloat = 24
+    /// Fill of the word "Claude" (white by default; a warm gradient over the data rain).
+    var nameStyle: AnyShapeStyle = AnyShapeStyle(Theme.ink)
 
     var body: some View {
         HStack(spacing: 10) {
@@ -13,8 +15,9 @@ struct WhoLine: View {
             Text("Claude")
                 .font(Theme.font(18, .bold))
                 .tracking(Theme.em(-0.022, 18))
-                .foregroundStyle(Theme.ink)
+                .foregroundStyle(nameStyle)
                 .fixedSize()
+            if !headline.isEmpty {
             Circle().fill(Theme.orange).frame(width: 6, height: 6)
             Text(headline)
                 .font(Theme.font(14.5, .semibold))
@@ -22,6 +25,7 @@ struct WhoLine: View {
                 .foregroundStyle(Theme.orange2)
                 .lineLimit(1)
                 .truncationMode(.tail)
+            }
         }
     }
 }

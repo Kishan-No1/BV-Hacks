@@ -65,6 +65,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let panel = NotchPanelController(model: model)
         self.panel = panel
         model.start()
+        if !options.demo { model.nowPlaying.start() }
         panel.show()
         // Switching to the app a session runs in (e.g. from an alert) puts that session's cards away.
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
