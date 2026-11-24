@@ -137,7 +137,7 @@ struct GeometryTests {
     }
 
     @Test func springChoiceFollowsThePrototype() {
-        #expect(IslandMotion.kind(from: .working, to: .progress, fromSize: CGSize(width: 272, height: 32), toSize: CGSize(width: 600, height: 256)) == .open)
+        #expect(IslandMotion.kind(from: .working, to: .progress, fromSize: CGSize(width: 272, height: 32), toSize: CGSize(width: 600, height: 256)) == .reveal)
         #expect(IslandMotion.kind(from: .idle, to: .working, fromSize: CGSize(width: 185, height: 32), toSize: CGSize(width: 272, height: 32)) == .nudge)
         #expect(IslandMotion.kind(from: .progress, to: .working, fromSize: CGSize(width: 600, height: 256), toSize: CGSize(width: 272, height: 32)) == .close)
     }

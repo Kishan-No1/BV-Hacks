@@ -86,7 +86,7 @@ struct ProgressContent: View {
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .background(GlowCard(model: model, radius: 22, hueBase: 14, hueSpread: 36))
+            .background(GlowCard(model: model, radius: 22, hueBase: 14, hueSpread: 36, tint: GlassCard.claude))
         }
         .padding(.top, top - 4)
         .padding(.horizontal, 16)

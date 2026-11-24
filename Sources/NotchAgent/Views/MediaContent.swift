@@ -86,25 +86,37 @@ struct MediaCard: View {
         .background {
             if framed {
                 if let glow {
-                    GlowCard(model: glow, radius: 22, hueBase: 125, hueSpread: 70)
+                    GlowCard(model: glow, radius: 22, hueBase: 125, hueSpread: 70, tint: GlassCard.player)
                 } else {
-                    GlassCard(radius: 22)
+                    GlassCard(radius: 22, tint: GlassCard.player)
                 }
             }
         }
     }
 }
 
-/// A see-through glass card: no frosting at all (the system glass material greys out the data rain), just a
-/// whisper of tint and a bright rim, so the rain runs straight through behind the text.
+/// A see-through glass card: no frosting (the system glass material greys out the data rain), a light ~15%
+/// fill and a bright rim, so the rain still shows through behind the text.
 struct GlassCard: View {
     var radius: CGFloat
+    /// The fill, corner to corner (top-left to bottom-right); each color carries its own ~10-16% opacity.
+    var tint: [Color] = GlassCard.neutral
+
+    static let neutral = [Color.white.opacity(0.15), Color.white.opacity(0.11)]
+    /// The player: Spotify green into rain cyan and violet.
+    static let player = [Color(hex: 0x1ED760).opacity(0.17), Color(hex: 0x22E6FF).opacity(0.10),
+                         Color(hex: 0x8A5CFF).opacity(0.15)]
+    /// Claude: warm orange into rain pink and violet.
+    static let claude = [Color(hex: 0xFF9A5C).opacity(0.17), Color(hex: 0xFF3D9A).opacity(0.10),
+                         Color(hex: 0x8A5CFF).opacity(0.15)]
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         ZStack {
-            shape.fill(LinearGradient(colors: [.white.opacity(0.018), .white.opacity(0.004)],
-                                      startPoint: .top, endPoint: .bottom))
+            shape.fill(LinearGradient(colors: tint, startPoint: .topLeading, endPoint: .bottomTrailing))
+            // A soft sheen across the top, like light on glass.
+            shape.fill(LinearGradient(colors: [.white.opacity(0.07), .white.opacity(0)], startPoint: .top,
+                                      endPoint: UnitPoint(x: 0.5, y: 0.45)))
             // Rim light: bright along the top edge, fading down the sides.
             shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.28), .white.opacity(0.06), .white.opacity(0.12)],
                                               startPoint: .top, endPoint: .bottom), lineWidth: 0.8)
@@ -121,6 +133,7 @@ struct GlowCard: View {
     var radius: CGFloat
     var hueBase: Double
     var hueSpread: Double
+    var tint: [Color] = GlassCard.neutral
     /// Size of the spotlight, like the component's `--size`.
     var spotlight: CGFloat = 200
 
@@ -136,7 +149,7 @@ struct GlowCard: View {
             let tint = Color(hue: hue, saturation: 1, brightness: 1)
             let lit = pointer != nil
             ZStack {
-                GlassCard(radius: radius)
+                GlassCard(radius: radius, tint: self.tint)
                 // The spot on the surface (--bg-spot-opacity .1).
                 shape.fill(RadialGradient(colors: [tint.opacity(0.12), .clear], center: center, startRadius: 0,
                                           endRadius: spotlight))

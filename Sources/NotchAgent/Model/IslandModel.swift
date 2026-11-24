@@ -160,7 +160,10 @@ final class IslandModel {
             pinnedProgressSessionID = nil
         }
         let motion = IslandMotion.kind(from: old, to: state, fromSize: size(for: old), toSize: size(for: state))
-        if state.isExpanded && !old.isExpanded && renderMode.animated { jellyTick &+= 1 }
+        // Pop-ups (a request, a question) land with the wobble; a hover-open does not (it wobbled on arrival).
+        if state.isExpanded && !old.isExpanded && state != .progress && state != .media && renderMode.animated {
+            jellyTick &+= 1
+        }
         if animated && renderMode.animated {
             withAnimation(motion.animation) { displayedState = state }
         } else {
@@ -219,7 +222,8 @@ final class IslandModel {
     /// (notch-sized) shape. Hover only opens from the notch, so a card that pops open under the pointer
     /// never turns into a Progress view that keeps itself open; once open it stays while the pointer is inside.
     func setPointerInside(_ inside: Bool, nearNotch: Bool = true) {
-        if inside && !rawInside && renderMode.animated { jellyTick &+= 1 }
+        // The wobble when the pointer reaches the collapsed notch (not when it re-enters an open island).
+        if inside && !rawInside && nearNotch && !displayedState.isExpanded && renderMode.animated { jellyTick &+= 1 }
         rawInside = inside
         let wanted = isHovering ? inside : (inside && nearNotch)
         guard wanted != pointerInside else { return }

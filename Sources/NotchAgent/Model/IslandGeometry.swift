@@ -93,10 +93,11 @@ enum IslandGeometry {
 
 /// Which spring a size change uses (prototype `OPEN`, `NUDGE`, `CLOSE`).
 enum IslandMotion: Equatable {
-    case open, nudge, close
+    /// `reveal`: a hover-open, without overshoot. `open`: a pop-up (request, question), with a little bounce.
+    case open, reveal, nudge, close
 
     static func kind(from: IslandState, to: IslandState, fromSize: CGSize, toSize: CGSize) -> IslandMotion {
-        if to.isExpanded { return .open }
+        if to.isExpanded { return to == .progress || to == .media ? .reveal : .open }
         return toSize.width * toSize.height > fromSize.width * fromSize.height ? .nudge : .close
     }
 
@@ -104,8 +105,11 @@ enum IslandMotion: Equatable {
         switch self {
         // A little overshoot: the island lands like jelly (the wobble itself is `Jelly`).
         case .open: return .spring(response: 0.52, dampingFraction: 0.68)
+        // Unhurried: the island glides open under the pointer.
+        case .reveal: return .spring(response: 0.78, dampingFraction: 0.95)
         case .nudge: return .spring(response: 0.42, dampingFraction: 0.7)
-        case .close: return .spring(response: 0.38, dampingFraction: 1.0)
+        // Unhurried, so the island settles back instead of snapping shut.
+        case .close: return .spring(response: 0.65, dampingFraction: 1.0)
         }
     }
 }
@@ -113,5 +117,6 @@ enum IslandMotion: Equatable {
 /// Hover timing from the prototype: open Progress after 120 ms, close 220 ms after the pointer leaves.
 enum HoverTiming {
     static let openDelay: TimeInterval = 0.12
-    static let closeDelay: TimeInterval = 0.22
+    /// The pointer must be off the island this long before it retracts.
+    static let closeDelay: TimeInterval = 1.0
 }
