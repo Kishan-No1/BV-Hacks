@@ -73,7 +73,7 @@ struct ProgressContent: View {
                 }
                 .frame(height: 30)
                 if let session {
-                    WhoLine(headline: "", clawd: 22, nameStyle: AnyShapeStyle(Theme.Vibe.claudeName))
+                    ClaudeTitleLine(session: session)
                         .padding(.top, 8)
                         .padding(.bottom, 6)
                         .id(session.id)
@@ -109,6 +109,44 @@ struct ProgressContent: View {
     private static let fade = LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.8),
                                                      .init(color: .black.opacity(0.35), location: 1)],
                                              startPoint: .top, endPoint: .bottom)
+}
+
+/// The split view's title: "Claude · <agent> · <chat>", one warm gradient across the whole line. The agent is the
+/// session's project folder; the chat is its title, else the latest prompt.
+struct ClaudeTitleLine: View {
+    let session: Session
+
+    private var chat: String? {
+        let c = (session.title ?? session.lastPrompt)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return c?.isEmpty == false ? c : nil
+    }
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Clawd(width: 22)
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                Text("Claude")
+                    .font(Theme.font(18, .bold))
+                    .tracking(Theme.em(-0.022, 18))
+                    .fixedSize()
+                Text("·").font(Theme.font(15, .bold))
+                Text(session.name)
+                    .font(Theme.font(15, .bold))
+                    .tracking(Theme.em(-0.015, 15))
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                if let chat {
+                    Text("·").font(Theme.font(15, .bold))
+                    Text(chat)
+                        .font(Theme.font(14.5, .semibold))
+                        .tracking(Theme.em(-0.012, 14.5))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            .foregroundStyle(Theme.Vibe.claudeName)
+        }
+    }
 }
 
 /// `.steps`: orange checks for completed steps, the current step dimmed with a play icon.
