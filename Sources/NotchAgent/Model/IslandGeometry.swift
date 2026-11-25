@@ -126,5 +126,5 @@ enum IslandMotion: Equatable {
 enum HoverTiming {
     static let openDelay: TimeInterval = 0.12
     /// The pointer must be off the island this long before it retracts.
-    static let closeDelay: TimeInterval = 1.0
+    static let closeDelay: TimeInterval = 0.5
 }

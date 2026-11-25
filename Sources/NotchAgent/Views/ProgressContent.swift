@@ -2,7 +2,7 @@
 import NotchAgentCore
 import SwiftUI
 
-/// The Progress view (600 x 256): header with avatars and tabs, "Claude ● <headline>", the step checklist and the
+/// The Progress view (600 x 256): avatars and tabs, "Claude ● <headline>", the step checklist and the
 /// tool card. The step list fades under the glass edge at the bottom.
 struct ProgressContent: View {
     let model: IslandModel
@@ -24,7 +24,6 @@ struct ProgressContent: View {
     private var napping: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 0) {
-                header(Theme.Vibe.label)
                 Spacer(minLength: 12)
                 TabButtons()
             }
@@ -42,7 +41,6 @@ struct ProgressContent: View {
         let session = model.progressSession
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 0) {
-                header
                 Spacer(minLength: 12)
                 HStack(spacing: 16) {
                     AvatarRow(sessions: store.sessions, ringID: session?.id) { id in
@@ -86,23 +84,32 @@ struct ProgressContent: View {
                 .frame(width: 344)
 
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 0) {
-                    header(Theme.Vibe.label)
-                    Spacer(minLength: 10)
-                    if !quiet {
-                        AvatarRow(sessions: Array(store.sessions.prefix(4)), ringID: session?.id) { id in
-                            model.avatarClicked(id)
-                        }
-                    }
-                }
-                .frame(height: 30)
                 if quiet {
                     NapScene(mascot: 46)
                 } else if let session {
-                    ClaudeTitleLine(session: session)
-                        .padding(.top, 8)
-                        .padding(.bottom, 6)
-                        .id(session.id)
+                    // The title line carries the session avatars at its right end.
+                    HStack(spacing: 10) {
+                        ClaudeTitleLine(session: session, includeChat: false)
+                        Spacer(minLength: 6)
+                        AvatarRow(sessions: Array(store.sessions.prefix(4)), ringID: session.id) { id in
+                            model.avatarClicked(id)
+                        }
+                    }
+                    .frame(height: 32)
+                    .padding(.top, 2)
+                    .id(session.id)
+                    // The chat name on its own line, so it is never squeezed out.
+                    if let chat = ClaudeTitleLine.chat(of: session) {
+                        Text(chat)
+                            .font(Theme.font(14, .semibold))
+                            .tracking(Theme.em(-0.012, 14))
+                            .foregroundStyle(Theme.Vibe.claudeName)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .padding(.leading, 2)
+                            .padding(.top, 2)
+                    }
+                    Spacer().frame(height: 8)
                     StepList(session: session, textColor: Theme.Vibe.step, currentColor: Theme.Vibe.stepCurrent)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .mask(Self.fade)
@@ -120,18 +127,6 @@ struct ProgressContent: View {
         .frame(width: size.width, height: size.height, alignment: .top)
     }
 
-    private var header: some View { header(Theme.ink2) }
-
-    private func header(_ color: Color) -> some View {
-        HStack(spacing: 9) {
-            StrokeIcon(shape: ListShape(), size: 17, color: color)
-            Text("Progress")
-                .font(Theme.font(14.5, .semibold))
-                .tracking(Theme.em(-0.01, 14.5))
-                .foregroundStyle(color)
-        }
-    }
-
     private static let fade = LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.8),
                                                      .init(color: .black.opacity(0.35), location: 1)],
                                              startPoint: .top, endPoint: .bottom)
@@ -141,11 +136,16 @@ struct ProgressContent: View {
 /// session's project folder; the chat is its title, else the latest prompt.
 struct ClaudeTitleLine: View {
     let session: Session
+    /// Ends the line with the chat name (the split view puts it on its own line instead).
+    var includeChat = true
 
-    private var chat: String? {
+    /// The chat's name: its title, else the latest prompt.
+    static func chat(of session: Session) -> String? {
         let c = (session.title ?? session.lastPrompt)?.trimmingCharacters(in: .whitespacesAndNewlines)
         return c?.isEmpty == false ? c : nil
     }
+
+    private var chat: String? { includeChat ? Self.chat(of: session) : nil }
 
     var body: some View {
         HStack(spacing: 9) {
