@@ -29,8 +29,8 @@ struct ClawdShape: Shape {
 struct Clawd: View {
     var width: CGFloat = 20
     var color: Color = Theme.orange
-    /// Wears the holiday nightcap (the collapsed island's mascot).
-    var festive: Bool = false
+    /// Wears the holiday nightcap: every Claude mascot does, everywhere (see Nightcap).
+    var festive: Bool = true
 
     var body: some View {
         ClawdShape()

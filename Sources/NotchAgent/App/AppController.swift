@@ -383,15 +383,27 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshMenu()
     }
 
-    /// The mascot as a template image for the menu bar.
+    /// The mascot in its holiday nightcap, as a template image for the menu bar (one color: the cap is a
+    /// silhouette with a gap above the head and a pom-pom flopping left).
     static func menuBarImage() -> NSImage {
-        let size = NSSize(width: 18, height: 13)
-        let image = NSImage(size: size, flipped: true) { rect in
+        // The 18 x 13 mascot grid, shifted right and down to make room for the cap.
+        let ox: CGFloat = 4, oy: CGFloat = 6
+        let size = NSSize(width: 18 + ox, height: 13 + oy)
+        let image = NSImage(size: size, flipped: true) { _ in
             NSColor.black.setFill()
             for r in ClawdShape.rects {
-                NSBezierPath(rect: NSRect(x: r.minX * rect.width / 18, y: r.minY * rect.height / 13,
-                                          width: r.width * rect.width / 18, height: r.height * rect.height / 13)).fill()
+                NSBezierPath(rect: NSRect(x: r.minX + ox, y: r.minY + oy, width: r.width, height: r.height)).fill()
             }
+            func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: x + ox, y: y + oy) }
+            let cap = NSBezierPath()
+            cap.move(to: p(3.4, -1.6))
+            cap.curve(to: p(-1.8, -1.9), controlPoint1: p(4.4, -6.0), controlPoint2: p(-0.4, -6.4))
+            cap.curve(to: p(14.6, -1.6), controlPoint1: p(2.6, -5.0), controlPoint2: p(11.4, -6.6))
+            cap.close()
+            cap.fill()
+            // The fluffy band (separated from the head by a hairline gap) and the pom-pom.
+            NSBezierPath(roundedRect: NSRect(x: 2.6 + ox, y: -1.4 + oy, width: 12.8, height: 1.0), xRadius: 0.5, yRadius: 0.5).fill()
+            NSBezierPath(ovalIn: NSRect(x: -3.7 + ox, y: -3.0 + oy, width: 2.7, height: 2.7)).fill()
             return true
         }
         image.isTemplate = true
