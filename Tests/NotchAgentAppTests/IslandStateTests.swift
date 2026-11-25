@@ -37,8 +37,9 @@ struct IslandStateTests {
         #expect(IslandState.derive(sessions: s, currentRequest: nil, visibleToast: nil, isHovering: false) == .attention)
     }
 
-    @Test func hoverOpensProgressOnlyWhenThereAreSessions() {
-        #expect(IslandState.derive(sessions: [], currentRequest: nil, visibleToast: nil, isHovering: true) == .idle)
+    @Test func hoverOpensProgressEvenWithNoSessions() {
+        // With nothing running, Progress opens to the sleeping-Claude empty state.
+        #expect(IslandState.derive(sessions: [], currentRequest: nil, visibleToast: nil, isHovering: true) == .progress)
         let s = [session("a", .working)]
         #expect(IslandState.derive(sessions: s, currentRequest: nil, visibleToast: nil, isHovering: true) == .progress)
         // A finished session can still be inspected.

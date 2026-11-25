@@ -11,7 +11,7 @@ enum Snapshotter {
     static let names = ["idle", "working", "attention", "progress", "progress-done", "request-low", "request-review",
                         "request-high", "request-unusual", "toast-done", "toast-allowed", "toast-denied",
                         "composer-draft", "composer-polished", "composer-error", "composer-sent", "input-question",
-                        "now-playing", "media", "progress-media"]
+                        "now-playing", "media", "progress-media", "progress-quiet", "progress-media-quiet"]
 
     static func run(directory: String) async -> Bool {
         let dir = URL(fileURLWithPath: directory, isDirectory: true)
@@ -101,6 +101,12 @@ enum Snapshotter {
             failed.append("input-question")
         }
 
+        // Nothing running: Progress shows Claude asleep (an empty store).
+        let busyStore = model.store
+        model.store = DemoPlayer.makeStore(clock: clock)
+        shoot("progress-quiet", .progress)
+        model.store = busyStore
+
         // Spotify: the collapsed wave, the player alone, and Progress split with the player.
         model.nowPlaying.showForSnapshot(.init(id: "snap", name: "High Hopes", artist: "David Gilmour",
                                                album: "Live at Pompeii", duration: 571),
@@ -112,6 +118,9 @@ enum Snapshotter {
         model.setPointer(CGPoint(x: 392, y: 46))
         shoot("progress-media", .progress)
         model.setPointer(nil)
+        model.store = DemoPlayer.makeStore(clock: clock)
+        shoot("progress-media-quiet", .progress)
+        model.store = busyStore
 
         Log.info("snapshot: wrote \(written.count) PNGs to \(dir.path)\(failed.isEmpty ? "" : "; failed: \(failed.joined(separator: ", "))")")
         return failed.isEmpty && Set(written) == Set(names)

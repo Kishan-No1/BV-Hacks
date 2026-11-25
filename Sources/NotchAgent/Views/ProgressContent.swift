@@ -8,11 +8,33 @@ struct ProgressContent: View {
     let model: IslandModel
 
     var body: some View {
-        if model.nowPlaying.isActive {
-            split
-        } else {
-            claudeOnly
+        SlowClock { now in
+            let quiet = Quiet.isQuiet(model.store.sessions, now: now)
+            if model.nowPlaying.isActive {
+                split(quiet: quiet)
+            } else if quiet {
+                napping
+            } else {
+                claudeOnly
+            }
         }
+    }
+
+    /// Nothing has run for two minutes: Claude asleep instead of stale steps.
+    private var napping: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                header(Theme.Vibe.label)
+                Spacer(minLength: 12)
+                TabButtons()
+            }
+            .frame(height: 30)
+            NapScene()
+                .padding(.bottom, 26)
+        }
+        .padding(.top, IslandGeometry.contentTopPadding(notch: model.notch))
+        .padding(.horizontal, 24)
+        .frame(width: IslandGeometry.progressSize.width, height: IslandGeometry.progressSize.height, alignment: .top)
     }
 
     private var claudeOnly: some View {
@@ -54,7 +76,7 @@ struct ProgressContent: View {
     }
 
     /// Media playing: the player on the left, Claude's steps on their own glass card on the right.
-    private var split: some View {
+    private func split(quiet: Bool) -> some View {
         let store = model.store
         let session = model.progressSession
         let size = IslandGeometry.splitProgressSize
@@ -67,12 +89,16 @@ struct ProgressContent: View {
                 HStack(spacing: 0) {
                     header(Theme.Vibe.label)
                     Spacer(minLength: 10)
-                    AvatarRow(sessions: Array(store.sessions.prefix(4)), ringID: session?.id) { id in
-                        model.avatarClicked(id)
+                    if !quiet {
+                        AvatarRow(sessions: Array(store.sessions.prefix(4)), ringID: session?.id) { id in
+                            model.avatarClicked(id)
+                        }
                     }
                 }
                 .frame(height: 30)
-                if let session {
+                if quiet {
+                    NapScene(mascot: 46)
+                } else if let session {
                     ClaudeTitleLine(session: session)
                         .padding(.top, 8)
                         .padding(.bottom, 6)

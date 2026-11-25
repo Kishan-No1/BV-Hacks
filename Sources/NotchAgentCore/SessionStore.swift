@@ -310,7 +310,7 @@ public final class SessionStore {
     public nonisolated static let unknownProcessStaleAfter: TimeInterval = 30 * 60
     /// A finished or idle session is hidden after this much silence even when its process still runs:
     /// the Claude desktop app keeps a process alive for every open session. Its next event brings it back.
-    public nonisolated static let idleStaleAfter: TimeInterval = 10 * 60
+    public nonisolated static let idleStaleAfter: TimeInterval = 2 * 60
 
     /// Removes sessions whose Claude Code process has exited (closed terminal, quit app, crash), which
     /// never send `SessionEnd`; finished or idle sessions silent for `idleStaleAfter`; and sessions with

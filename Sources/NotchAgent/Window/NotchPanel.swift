@@ -147,7 +147,7 @@ final class NotchPanelController {
 
     /// The island's clickable rect in screen coordinates, or nil when there is nothing to interact with.
     var hitRect: CGRect? {
-        if model.displayedState == .idle && model.store.sessions.isEmpty && !model.nowPlaying.isActive { return nil }
+        // Always hoverable: with nothing running, Progress opens to the sleeping-Claude empty state.
         return IslandGeometry.hitRect(islandSize: model.displayedSize, panelFrame: panel.frame)
     }
 

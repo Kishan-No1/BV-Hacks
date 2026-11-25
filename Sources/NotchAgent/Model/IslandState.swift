@@ -39,6 +39,8 @@ enum IslandState: Equatable {
             // With Spotify active, Progress splits: Claude on the left, the player on the right.
             if !sessions.isEmpty { return .progress }
             if mediaActive { return .media }
+            // Nothing at all: Progress still opens, to Claude asleep.
+            return .progress
         }
         if sessions.contains(where: { $0.status == .needsYou }) { return .attention }
         if sessions.contains(where: { $0.status == .working }) { return .working }
