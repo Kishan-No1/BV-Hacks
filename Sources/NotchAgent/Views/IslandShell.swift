@@ -56,6 +56,7 @@ struct IslandCanvas: View {
             IslandBody(model: model, state: state, size: size, radius: radius)
                 .jelly(trigger: model.jellyTick)
         }
+        .scaleEffect(state.isExpanded ? IslandGeometry.expandedScale : 1, anchor: .top)
         .frame(width: IslandGeometry.canvas.width, height: IslandGeometry.canvas.height, alignment: .top)
         .coordinateSpace(.named(Self.space))
     }

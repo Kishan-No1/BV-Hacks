@@ -34,6 +34,14 @@ enum IslandGeometry {
     static let shoulder: CGFloat = 10
     static let expandedRadius: CGFloat = 34
     static let compactRadius: CGFloat = 10
+    /// The open island is drawn at this scale (layout sizes below stay in design points). The collapsed island
+    /// keeps full size so it still covers the hardware notch.
+    static let expandedScale: CGFloat = 0.88
+
+    static func visualSize(_ size: CGSize, _ state: IslandState) -> CGSize {
+        state.isExpanded ? CGSize(width: size.width * expandedScale, height: size.height * expandedScale) : size
+    }
+
     static let progressSize = CGSize(width: 600, height: 256)
     /// Progress with Spotify active: Claude on the left half, the player on the right.
     static let splitProgressSize = CGSize(width: 730, height: 282)

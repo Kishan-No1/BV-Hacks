@@ -81,8 +81,13 @@ final class IslandModel {
         IslandState.derive(store: store, visibleToast: toastClock.visible?.kind, isHovering: isHovering,
                            forceProgress: forceProgress, composer: composer.isOpen ? composer.layout : nil,
                            dismissedInputs: dismissedInputs, mediaActive: nowPlaying.isActive,
-                           mediaPlaying: nowPlaying.isPlaying)
+                           mediaPlaying: nowPlaying.isPlaying,
+                           claudeQuiet: quietTick >= 0 && Quiet.isQuiet(store.sessions, now: Date()))
     }
+
+    /// Bumped every few seconds so "nothing has run for 2 minutes" is re-checked as time passes.
+    private(set) var quietTick = 0
+    @ObservationIgnored private var quietTimer: Timer?
 
     func dismissInput(sessionID: String, _ attention: Attention) {
         Log.debug("action: dismiss input card")
@@ -120,7 +125,8 @@ final class IslandModel {
         return IslandGeometry.size(for: state, notch: notch, split: nowPlaying.isActive)
     }
 
-    var displayedSize: CGSize { size(for: displayedState) }
+    /// The island as drawn: expanded states are rendered at `IslandGeometry.expandedScale`.
+    var displayedSize: CGSize { IslandGeometry.visualSize(size(for: displayedState), displayedState) }
 
     // MARK: Lifecycle
 
@@ -134,6 +140,9 @@ final class IslandModel {
             self.apply(state)
         }
         stateLoop?.start()
+        quietTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.quietTick &+= 1 }
+        }
     }
 
     func stop() {

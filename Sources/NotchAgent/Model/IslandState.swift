@@ -24,7 +24,7 @@ enum IslandState: Equatable {
     static func derive(sessions: [Session], currentRequest: PendingRequest?, visibleToast: Toast.Kind?,
                        isHovering: Bool, forceProgress: Bool = false, composer: ComposerLayout? = nil,
                        dismissedInputs: Set<String> = [], mediaActive: Bool = false,
-                       mediaPlaying: Bool = false) -> IslandState {
+                       mediaPlaying: Bool = false, claudeQuiet: Bool = false) -> IslandState {
         if let composer { return .composer(composer) }
         if let currentRequest { return .request(currentRequest) }
         // The oldest waiting question first, like the request queue.
@@ -37,8 +37,10 @@ enum IslandState: Equatable {
         if let visibleToast { return .toast(visibleToast) }
         if isHovering || forceProgress {
             // With Spotify active, Progress splits: Claude on the left, the player on the right.
+            // Music with nothing running in Claude: the player keeps the whole island (with a tiny napping
+            // Claude beside the title) instead of a Claude panel full of nothing.
+            if mediaActive && (sessions.isEmpty || claudeQuiet) { return .media }
             if !sessions.isEmpty { return .progress }
-            if mediaActive { return .media }
             // Nothing at all: Progress still opens, to Claude asleep.
             return .progress
         }
@@ -51,10 +53,10 @@ enum IslandState: Equatable {
     @MainActor
     static func derive(store: SessionStore, visibleToast: Toast.Kind?, isHovering: Bool, forceProgress: Bool = false,
                        composer: ComposerLayout? = nil, dismissedInputs: Set<String> = [],
-                       mediaActive: Bool = false, mediaPlaying: Bool = false) -> IslandState {
+                       mediaActive: Bool = false, mediaPlaying: Bool = false, claudeQuiet: Bool = false) -> IslandState {
         derive(sessions: store.sessions, currentRequest: store.currentRequest, visibleToast: visibleToast,
                isHovering: isHovering, forceProgress: forceProgress, composer: composer, dismissedInputs: dismissedInputs,
-               mediaActive: mediaActive, mediaPlaying: mediaPlaying)
+               mediaActive: mediaActive, mediaPlaying: mediaPlaying, claudeQuiet: claudeQuiet)
     }
 
     /// Identifies one wait: the same session asking again later is a new card.

@@ -82,8 +82,27 @@ struct SleepingClawd: View {
     }
 }
 
+/// The small version beside the song title: the mascot asleep with its z's, nothing else.
+struct MiniNap: View {
+    var body: some View {
+        AnimationClock { t in
+            ZStack(alignment: .topTrailing) {
+                SleepingClawd(width: 32)
+                    .scaleEffect(x: 1 + 0.015 * sin(t * 2 * .pi / 3.2),
+                                 y: 1 - 0.05 * (0.5 + 0.5 * sin(t * 2 * .pi / 3.2)), anchor: .bottom)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                Snores(time: t)
+                    .scaleEffect(0.75, anchor: .bottomLeading)
+                    .offset(x: 30, y: 4)
+            }
+            .frame(width: 58, height: 46, alignment: .bottomLeading)
+        }
+        .accessibilityLabel("Nothing's running in Claude")
+    }
+}
+
 /// Three "z"s rising and fading in turn.
-private struct Snores: View {
+struct Snores: View {
     let time: Double
     static let period = 2.7
 

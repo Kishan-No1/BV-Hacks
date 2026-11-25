@@ -11,7 +11,9 @@ struct MediaContent: View {
     let model: IslandModel
 
     var body: some View {
-        MediaCard(media: model.nowPlaying, framed: false)
+        MediaCard(media: model.nowPlaying, framed: false, titleTrailingInset: 50)
+            // Nothing running in Claude: a tiny napping Claude beside the title.
+            .overlay(alignment: .topTrailing) { MiniNap().offset(x: 8, y: -8) }
             .padding(.top, IslandGeometry.contentTopPadding(notch: model.notch) - 6)
             .padding(.horizontal, 22)
             .padding(.bottom, 16)
@@ -37,6 +39,8 @@ struct CompactNowPlaying: View {
 struct MediaCard: View {
     let media: NowPlaying
     var framed: Bool = true
+    /// Room kept clear right of the title block (for the mini nap).
+    var titleTrailingInset: CGFloat = 0
     /// When set, the card's border glows where the pointer is (`GlowCard`).
     var glow: IslandModel? = nil
     @Environment(\.notchAgentRender) private var render
@@ -66,6 +70,7 @@ struct MediaCard: View {
                     .lineLimit(1)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
+                    .padding(.trailing, titleTrailingInset)
                 }
                 Spacer(minLength: 10)
                 ScrubBar(media: media)

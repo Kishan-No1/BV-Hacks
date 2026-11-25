@@ -36,9 +36,10 @@ struct DataRainView: View {
     }
 
     private func canvas(at date: Date?) -> some View {
-        // Pointer in island coordinates (the island is centered at the top of the canvas).
-        let originX = (IslandGeometry.canvas.width - size.width) / 2
-        let pointer = model.pointer.map { CGPoint(x: $0.x - originX, y: $0.y) }
+        // Pointer in island coordinates (the island is centered at the top of the canvas, drawn scaled).
+        let s = IslandGeometry.expandedScale
+        let originX = (IslandGeometry.canvas.width - size.width * s) / 2
+        let pointer = model.pointer.map { CGPoint(x: ($0.x - originX) / s, y: $0.y / s) }
         return Canvas { ctx, canvasSize in
             if let date {
                 field.advance(to: date, size: canvasSize, pointer: pointer)
