@@ -45,7 +45,7 @@ private struct ComposerHeader: View {
         let target = composer.target
         HStack(spacing: 12) {
             HStack(spacing: 10) {
-                Clawd(width: 22)
+                Kishu(width: 25)
                 Text("Prompt")
                     .font(Theme.font(18, .bold))
                     .tracking(Theme.em(-0.022, 18))

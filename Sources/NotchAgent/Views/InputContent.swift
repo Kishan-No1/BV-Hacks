@@ -13,7 +13,7 @@ struct InputContent: View {
         let session = store.session(id: sessionID)
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
-                WhoLine(headline: session?.headline ?? "session", clawd: 22)
+                WhoLine(headline: session?.headline ?? "session", mascot: 25)
                 Spacer(minLength: 0)
                 AvatarRow(sessions: store.sessions, ringID: sessionID)
             }

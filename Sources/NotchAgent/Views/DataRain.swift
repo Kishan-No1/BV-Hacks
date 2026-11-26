@@ -10,8 +10,10 @@ import SwiftUI
 /// fixed 60 Hz step and look (additive trails, a blurred bloom pass, a vignette).
 struct DataRainView: View {
     let model: IslandModel
-    /// The island's size; the view fills it.
+    /// The size this view fills (the island, or its left half in the split view).
     let size: CGSize
+    /// The island's full width, for mapping the pointer (defaults to `size.width`).
+    var islandWidth: CGFloat? = nil
     @Environment(\.notchAgentRender) private var render
     @State private var field = DataRainField()
 
@@ -38,7 +40,7 @@ struct DataRainView: View {
     private func canvas(at date: Date?) -> some View {
         // Pointer in island coordinates (the island is centered at the top of the canvas, drawn scaled).
         let s = IslandGeometry.expandedScale
-        let originX = (IslandGeometry.canvas.width - size.width * s) / 2
+        let originX = (IslandGeometry.canvas.width - (islandWidth ?? size.width) * s) / 2
         let pointer = model.pointer.map { CGPoint(x: ($0.x - originX) / s, y: $0.y / s) }
         return Canvas { ctx, canvasSize in
             if let date {

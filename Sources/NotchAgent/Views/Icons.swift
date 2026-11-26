@@ -1,45 +1,73 @@
 // OWNER: workstream C (app-ui).
 import SwiftUI
 
-/// The pixel-art Claude Code mascot, from the prototype's `clawd()` rects (viewBox 18 x 13).
-struct ClawdShape: Shape {
-    static let rects: [CGRect] = [
-        CGRect(x: 3, y: 0, width: 12, height: 2.5),
-        CGRect(x: 3, y: 2.5, width: 2, height: 2.5),
-        CGRect(x: 6, y: 2.5, width: 6, height: 2.5),
-        CGRect(x: 13, y: 2.5, width: 2, height: 2.5),
-        CGRect(x: 1, y: 5, width: 16, height: 2.5),
-        CGRect(x: 3, y: 7.5, width: 12, height: 2.5),
-        CGRect(x: 4, y: 10, width: 1, height: 3),
-        CGRect(x: 6, y: 10, width: 1, height: 3),
-        CGRect(x: 11, y: 10, width: 1, height: 3),
-        CGRect(x: 13, y: 10, width: 1, height: 3),
-    ]
-
-    func path(in rect: CGRect) -> Path {
-        let sx = rect.width / 18, sy = rect.height / 13
-        var p = Path()
-        for r in Self.rects {
-            p.addRect(CGRect(x: rect.minX + r.minX * sx, y: rect.minY + r.minY * sy, width: r.width * sx, height: r.height * sy))
-        }
-        return p
-    }
-}
-
-struct Clawd: View {
+/// Kishu, the mascot shown for Claude everywhere: a plush dog (peach fur, floppy ears, happy closed eyes, a
+/// blue collar and his red-and-white striped shirt), drawn on the old Clawd mascot's 18 x 13 grid so every
+/// layout and the nightcap line up.
+struct Kishu: View {
     var width: CGFloat = 20
-    var color: Color = Theme.orange
-    /// Wears the holiday nightcap: every Claude mascot does, everywhere (see Nightcap).
+    /// Wears the holiday nightcap: every mascot does, everywhere (see Nightcap).
     var festive: Bool = true
 
     var body: some View {
-        ClawdShape()
-            .fill(color)
-            .frame(width: width, height: (width * 13 / 18).rounded())
+        KishuSprite(width: width)
             .overlay(alignment: .topLeading) {
                 if festive { Nightcap(width: width) }
             }
-            .accessibilityLabel("Claude Code")
+            .accessibilityLabel("Kishu")
+    }
+}
+
+/// Kishu in pixels: head, collar and the top of his shirt (18 x 13). His colors were picked from a photo of the
+/// plush he is based on.
+struct KishuSprite: View {
+    var width: CGFloat
+    var asleep = false
+
+    static let awake = [
+        "....pppppppppp....",
+        "..pppppppppppppp..",
+        ".EEppppppppppppEE.",
+        "EEEppppppppppppEEE",
+        "EEEppKppppppKppEEE",
+        "EEEpKpKppppKpKpEEE",
+        "EEEpppppNNpppppEEE",
+        "EEEppppMppMppppEEE",
+        ".EEpppppMMpppppEE.",
+        ".EE.pppppppppp.EE.",
+        "....BBBBBBBBBB....",
+        "..ppRRRRRRRRRRpp..",
+        "..ppWWWWYYWWWWpp..",
+    ]
+    /// Asleep: the happy arcs become flat lids.
+    static let sleeping: [String] = {
+        var rows = awake
+        rows[4] = "EEEppppppppppppEEE"
+        rows[5] = "EEEpKKKppppKKKpEEE"
+        return rows
+    }()
+    static let colors: [Character: Color] = [
+        "p": Color(hex: 0xFECEAF), "E": Color(hex: 0xD1A08A), "K": Color(hex: 0x281A1C), "N": Color(hex: 0x161214),
+        "M": Color(hex: 0x462A28), "B": Color(hex: 0x2A458B), "R": Color(hex: 0xDA3F3C), "W": Color(hex: 0xFAE6DB),
+        "Y": Color(hex: 0xE5B175),
+    ]
+    /// The face's pixels: left as holes in one-color versions (the menu-bar icon).
+    static let face: Set<Character> = ["K", "N", "M"]
+
+    var body: some View {
+        let h = (width * 13 / 18).rounded()
+        let rows = asleep ? Self.sleeping : Self.awake
+        Canvas { ctx, size in
+            let sx = size.width / 18, sy = size.height / 13
+            for (y, line) in rows.enumerated() {
+                for (x, ch) in line.enumerated() {
+                    guard let c = Self.colors[ch] else { continue }
+                    // Slight overlap so neighbouring pixels never show hairline seams.
+                    ctx.fill(Path(CGRect(x: CGFloat(x) * sx, y: CGFloat(y) * sy, width: sx + 0.3, height: sy + 0.3)), with: .color(c))
+                }
+            }
+        }
+        .frame(width: width, height: h)
     }
 }
 

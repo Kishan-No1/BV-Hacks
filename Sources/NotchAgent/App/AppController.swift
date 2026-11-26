@@ -383,7 +383,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshMenu()
     }
 
-    /// The mascot in its holiday nightcap, as a template image for the menu bar (one color: the cap is a
+    /// Kishu in his holiday nightcap, as a template image for the menu bar (one color: the cap is a
     /// silhouette with a gap above the head and a pom-pom flopping left).
     static func menuBarImage() -> NSImage {
         // The 18 x 13 mascot grid, shifted right and down to make room for the cap.
@@ -391,8 +391,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let size = NSSize(width: 18 + ox, height: 13 + oy)
         let image = NSImage(size: size, flipped: true) { _ in
             NSColor.black.setFill()
-            for r in ClawdShape.rects {
-                NSBezierPath(rect: NSRect(x: r.minX + ox, y: r.minY + oy, width: r.width, height: r.height)).fill()
+            // Kishu's silhouette, with its face (eyes, nose, mouth) left as holes.
+            for (y, line) in KishuSprite.awake.enumerated() {
+                for (x, ch) in line.enumerated() where ch != "." && !KishuSprite.face.contains(ch) {
+                    NSBezierPath(rect: NSRect(x: CGFloat(x) + ox, y: CGFloat(y) + oy, width: 1, height: 1)).fill()
+                }
             }
             func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: x + ox, y: y + oy) }
             let cap = NSBezierPath()

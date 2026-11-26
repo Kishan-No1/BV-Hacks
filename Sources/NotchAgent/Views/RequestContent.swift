@@ -16,7 +16,7 @@ struct RequestContent: View {
         VStack(alignment: .leading, spacing: 0) {
             // .rq-top
             HStack(spacing: 12) {
-                WhoLine(headline: headline, clawd: 22)
+                WhoLine(headline: headline, mascot: 25)
                 Spacer(minLength: 0)
                 AvatarRow(sessions: store.sessions, ringID: request.sessionID)
             }

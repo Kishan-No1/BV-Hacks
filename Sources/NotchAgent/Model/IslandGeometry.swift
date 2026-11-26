@@ -45,6 +45,8 @@ enum IslandGeometry {
     static let progressSize = CGSize(width: 600, height: 256)
     /// Progress with Spotify active: Claude on the left half, the player on the right.
     static let splitProgressSize = CGSize(width: 730, height: 282)
+    /// Where the split view's two backdrops meet: the middle of the gap between the player and Claude cards.
+    static let splitSeam: CGFloat = 367
     /// The player alone (hover with no Claude session).
     static let mediaSize = CGSize(width: 440, height: 246)
     static let requestWidth: CGFloat = 560

@@ -11,7 +11,7 @@ struct MediaContent: View {
     let model: IslandModel
 
     var body: some View {
-        MediaCard(media: model.nowPlaying, framed: false, titleTrailingInset: 50)
+        MediaCard(media: model.nowPlaying, framed: false, titleTrailingInset: 58)
             // Nothing running in Claude: a tiny napping Claude beside the title.
             .overlay(alignment: .topTrailing) { MiniNap().offset(x: 8, y: -8) }
             .padding(.top, IslandGeometry.contentTopPadding(notch: model.notch) - 6)

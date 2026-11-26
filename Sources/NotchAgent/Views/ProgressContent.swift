@@ -52,7 +52,7 @@ struct ProgressContent: View {
             .frame(height: 30)
 
             if let session {
-                WhoLine(headline: session.headline, clawd: 24)
+                WhoLine(headline: session.headline, mascot: 27)
                     .padding(.top, 10)
                     .padding(.bottom, 8)
                     .id(session.id)
@@ -85,7 +85,7 @@ struct ProgressContent: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 if quiet {
-                    NapScene(mascot: 46)
+                    NapScene(mascot: 54)
                 } else if let session {
                     // The title line carries the session avatars at its right end.
                     HStack(spacing: 10) {
@@ -149,7 +149,7 @@ struct ClaudeTitleLine: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            Clawd(width: 22)
+            Kishu(width: 25)
             HStack(alignment: .firstTextBaseline, spacing: 7) {
                 Text("Claude")
                     .font(Theme.font(18, .bold))

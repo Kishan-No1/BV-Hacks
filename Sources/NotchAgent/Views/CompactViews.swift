@@ -111,14 +111,14 @@ struct Ears<Left: View, Right: View>: View {
 
 struct CompactWorking: View {
     var body: some View {
-        Ears { Clawd(width: 19) } right: { Wave() }
+        Ears { Kishu(width: 22.5).offset(y: 2.5) } right: { Wave() }
     }
 }
 
 struct CompactAttention: View {
     var body: some View {
         Ears {
-            Clawd(width: 19)
+            Kishu(width: 22.5).offset(y: 2.5)
                 .overlay(alignment: .topTrailing) {
                     // .badge-dot::after: 6px amber, right -3 top -3, 1.5px black ring
                     Circle().fill(Theme.amber)
@@ -138,7 +138,7 @@ struct CompactToast: View {
     let kind: Toast.Kind
 
     var body: some View {
-        Ears { Clawd(width: 19) } right: {
+        Ears { Kishu(width: 22.5).offset(y: 2.5) } right: {
             switch kind {
             case .done:
                 Text("Done").fontWeight(.medium).foregroundStyle(Theme.ink2)

@@ -5,13 +5,13 @@ import SwiftUI
 /// `.who`: mascot, "Claude", orange dot, the session headline in orange2.
 struct WhoLine: View {
     let headline: String
-    var clawd: CGFloat = 24
+    var mascot: CGFloat = 27
     /// Fill of the word "Claude" (white by default; a warm gradient over the data rain).
     var nameStyle: AnyShapeStyle = AnyShapeStyle(Theme.ink)
 
     var body: some View {
         HStack(spacing: 10) {
-            Clawd(width: clawd)
+            Kishu(width: mascot)
             Text("Claude")
                 .font(Theme.font(18, .bold))
                 .tracking(Theme.em(-0.022, 18))
@@ -54,7 +54,7 @@ struct Avatar: View {
             Circle().fill(LinearGradient(colors: isOn ? [Color(hex: 0x3A2620), Color(hex: 0x23160F)]
                                                       : [Color(hex: 0x2A2A2E), Color(hex: 0x18181B)],
                                          startPoint: .top, endPoint: .bottom))
-            Clawd(width: 15)
+            Kishu(width: 17).offset(y: 1)
         }
         .frame(width: 28, height: 28)
         .modifier(Glassy())

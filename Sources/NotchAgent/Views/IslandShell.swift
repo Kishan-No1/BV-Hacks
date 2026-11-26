@@ -43,6 +43,12 @@ struct IslandShape: Shape {
     }
 }
 
+/// The live backdrop behind the player and Claude panels (both are kept; one is shown).
+enum IslandBackdrop {
+    case liquidChrome, dataRain
+    static let current: IslandBackdrop = .dataRain
+}
+
 /// The whole island at the top center of the fixed canvas. The canvas never resizes; the island springs inside it.
 struct IslandCanvas: View {
     let model: IslandModel
@@ -111,10 +117,27 @@ struct IslandBody: View {
         ZStack(alignment: .top) {
             IslandBackground(expanded: expanded, height: size.height, radius: radius)
             if player {
-                // The data-rain field replaces the black behind the panels.
-                DataRainView(model: model, size: size)
-                    .clipShape(shape)
-                    .transition(.opacity)
+                // A live backdrop replaces the black behind the panels.
+                Group {
+                    if state == .progress {
+                        // Split: the player's backdrop on the left, the particle sphere behind Claude's card,
+                        // seamed in the gap between the two cards with a soft fade.
+                        let seam = IslandGeometry.splitSeam
+                        ZStack(alignment: .leading) {
+                            playerBackdrop(CGSize(width: seam + 20, height: size.height), islandWidth: size.width)
+                            ParticleSphereView(model: model, size: CGSize(width: size.width - seam, height: size.height),
+                                               islandOffsetX: seam, islandWidth: size.width)
+                                .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.06)],
+                                                     startPoint: .leading, endPoint: .trailing))
+                                .offset(x: seam)
+                        }
+                        .frame(width: size.width, height: size.height, alignment: .leading)
+                    } else {
+                        playerBackdrop(size, islandWidth: size.width)
+                    }
+                }
+                .clipShape(shape)
+                .transition(.opacity)
             }
             // Over the data rain the frosted bottom edge would grey it out; the glass rim draws the edge instead.
             GlassEdge(risk: state.glowRisk, radius: radius)
@@ -135,6 +158,16 @@ struct IslandBody: View {
         .frame(width: size.width, height: size.height, alignment: .top)
         .clipShape(shape)
         .contentShape(shape)
+    }
+}
+
+extension IslandBody {
+    @ViewBuilder
+    func playerBackdrop(_ size: CGSize, islandWidth: CGFloat) -> some View {
+        switch IslandBackdrop.current {
+        case .liquidChrome: LiquidChromeView(model: model, size: size, islandWidth: islandWidth)
+        case .dataRain: DataRainView(model: model, size: size, islandWidth: islandWidth)
+        }
     }
 }
 
